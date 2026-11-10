@@ -542,25 +542,25 @@ public final class CarPlaySettingsUi {
         Log.i(TAG, "selected rgi_vc " + mode);
     }
 
-    /** Star/roller cycle entry: an explicit 5-position counter persisted as
-     *  KEY_CARD_CYCLE.  Rule the user drives with: while Route Guidance is
-     *  CHECKED the map turn cards never show; unchecked they show.  The cycle
-     *  flips the checkbox itself:
+    /** Star/roller cycle entry: an explicit 4-position counter persisted as
+     *  KEY_CARD_CYCLE.  Rule: while Route Guidance is CHECKED the map turn
+     *  cards never show; unchecked they show.  The cycle flips the checkbox:
      *    0 显示: checked + guidance card visible (map cards hidden)
-     *    1 全空: checked + guidance card hidden (map cards hidden too)
-     *    2/3/4: unchecked + map-card position left/center/right
-     *    -> back to 0. */
+     *    1/2/3: unchecked + map-card position left/center/right
+     *    -> back to 0.  (The former "all hidden" state was removed on request:
+     *    its card-hide needed the event-gated renderer and looked dead while
+     *    parked.) */
     private static volatile int cyclePos = -1;   /* -1 = not read yet */
 
     private static int readCyclePos() {
-        int v = readBounded(KEY_CARD_CYCLE, 0, 0, 4);
+        int v = readBounded(KEY_CARD_CYCLE, 0, 0, 3);
         cyclePos = v;
         return v;
     }
 
     public static void cycleCardState() {
         int pos = (cyclePos < 0) ? readCyclePos() : cyclePos;
-        pos = (pos + 1) % 5;
+        pos = (pos + 1) % 4;
         cyclePos = pos;
         storeKey(KEY_CARD_CYCLE, pos);
         Log.w(TAG, "star cycle -> state " + pos);
@@ -573,20 +573,15 @@ public final class CarPlaySettingsUi {
                  * even during guidance - the user's rule is checked = never. */
                 selectAltUrl(ALT_URL_MAP_WHEN_RGI);
                 break;
-            case 1:  /* 全空：保持勾选，引导卡隐藏（左中右因勾选永隐） */
-                selectRgiEnabled(RGI_ENABLED_ON);
-                selectRgiVc(RGI_VC_HIDDEN);
-                selectAltUrl(ALT_URL_MAP_WHEN_RGI);
-                break;
-            case 2:  /* 左 */
+            case 1:  /* 左 */
                 selectRgiEnabled(RGI_ENABLED_OFF);
                 selectAltLayout(ALT_LAYOUT_LEFT);
                 break;
-            case 3:  /* 中 */
+            case 2:  /* 中 */
                 selectRgiEnabled(RGI_ENABLED_OFF);
                 selectAltLayout(ALT_LAYOUT_CENTER);
                 break;
-            case 4:  /* 右 */
+            case 3:  /* 右 */
                 selectRgiEnabled(RGI_ENABLED_OFF);
                 selectAltLayout(ALT_LAYOUT_RIGHT);
                 break;
