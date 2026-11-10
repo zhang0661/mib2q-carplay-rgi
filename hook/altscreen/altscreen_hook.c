@@ -3030,15 +3030,6 @@ static void alt_forward_failed(uint32_t gen, void *context)
     if (!alt_qemu_capture_only()) alt_send_cluster_idr_raw(gen, "coordinated-recovery");
 }
 
-static void altscreen_init(void)
-{
-    g_forward_available = altav_async_start(alt_forward_failed, NULL) == 0;
-    if (!g_forward_available)
-        LOG_ERROR(LOG_MODULE, "AltScreen forwarding worker create failed; advert suppressed");
-    alt_settings_reload();
-    bus_on(CMD_ALT_ZOOM, zoom_on_cmd, NULL);
-    bus_on(CMD_ALT_ZONE, zone_on_cmd, NULL);
-    bus_on(CMD_ALT_RGI, rgi_on_cmd, NULL);
 /* MMI "从 SD 卡更新": run the installer in a child process, log to
  * /tmp/carplay_update.log.  Java polls the log for DONE/FAILED. */
 static void update_on_cmd(uint16_t type, uint8_t flags, const uint8_t *payload, uint32_t len, void *ctx)
@@ -3072,6 +3063,15 @@ static void update_on_cmd(uint16_t type, uint8_t flags, const uint8_t *payload, 
     }
 }
 
+static void altscreen_init(void)
+{
+    g_forward_available = altav_async_start(alt_forward_failed, NULL) == 0;
+    if (!g_forward_available)
+        LOG_ERROR(LOG_MODULE, "AltScreen forwarding worker create failed; advert suppressed");
+    alt_settings_reload();
+    bus_on(CMD_ALT_ZOOM, zoom_on_cmd, NULL);
+    bus_on(CMD_ALT_ZONE, zone_on_cmd, NULL);
+    bus_on(CMD_ALT_RGI, rgi_on_cmd, NULL);
     bus_on(CMD_ALT_CFG, cfg_on_cmd, NULL);
     bus_on(CMD_UPDATE, update_on_cmd, NULL);
     LOG_INFO(LOG_MODULE, "AltScreen injector loaded (control negotiation + self-contained stream 111; cluster ZOOM/ZONE/RGI registered; NIGHT mirrored from stock /info + SetNightMode)");
