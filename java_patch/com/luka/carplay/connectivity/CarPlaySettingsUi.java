@@ -77,6 +77,7 @@ public final class CarPlaySettingsUi {
     private static final int KEY_RGI_VC      = 1007;
     private static final int KEY_CARD_ALPHA  = 1008;
     private static final int KEY_CARD_CYCLE  = 1009;   /* star/roller cycle position 0..4 */
+    private static final int KEY_SPLASH      = 1010;   /* custom connect animation on/off */
 
     public static final int LEVEL_OFF = 0;
     public static final int LEVEL_NORMAL = 1;
@@ -121,6 +122,11 @@ public final class CarPlaySettingsUi {
     public static final int RGI_VC_HIDDEN = 2;
     public static final int RGI_VC_DEFAULT = RGI_VC_ALWAYS;
 
+    /* Custom CarPlay-connect animation (splash.bin on the cluster). */
+    public static final int SPLASH_OFF = 0;
+    public static final int SPLASH_ON = 1;
+    public static final int SPLASH_DEFAULT = SPLASH_ON;
+
     public static final String SETTINGS_FILE = "/tmp/carplay_settings"; // hook/audio/audio_hook.h (SPA_SETTINGS_FILE)
 
     public static final int MODEL_SPATIAL     = 2500500;       // module 25, index 500
@@ -133,6 +139,7 @@ public final class CarPlaySettingsUi {
     public static final int MODEL_CARD_ALPHA  = 2500507;       // module 25, index 507
     public static final int MODEL_RGI_VC      = 2500508;       // module 25, index 508
     public static final int MODEL_UPDATE      = 2500509;       // module 25, index 509
+    public static final int MODEL_SPLASH      = 2500510;       // module 25, index 510
 
     private static final int INDEX_SPATIAL     = MODEL_SPATIAL % 100000;
     private static final int INDEX_UPMIX       = MODEL_UPMIX % 100000;
@@ -144,6 +151,7 @@ public final class CarPlaySettingsUi {
     private static final int INDEX_CARD_ALPHA  = MODEL_CARD_ALPHA % 100000;
     private static final int INDEX_RGI_VC      = MODEL_RGI_VC % 100000;
     private static final int INDEX_UPDATE      = MODEL_UPDATE % 100000;
+    private static final int INDEX_SPLASH      = MODEL_SPLASH % 100000;
 
     private static final int DRAWER_CM_OPT        = 2500001;
     private static final int SCREEN_ABOUT_CARPLAY = 2500140;
@@ -161,6 +169,7 @@ public final class CarPlaySettingsUi {
     private static final int INTERNAL_ID_CARD_ALPHA  = 2509917;
     private static final int INTERNAL_ID_RGI_VC      = 2509918;
     private static final int INTERNAL_ID_UPDATE      = 2509919;
+    private static final int INTERNAL_ID_SPLASH      = 2509920;
 
     // HMIConnectivityEvoHigh string table slots 1500..1529 (text ids 2501500..2501529)
     public static final int TEXT_TITLE                  = 2501500;
@@ -206,6 +215,10 @@ public final class CarPlaySettingsUi {
     public static final int TEXT_UPDATE_DONE           = 2501540;
     public static final int TEXT_UPDATE_FAILED         = 2501541;
     public static final int TEXT_UPDATE_HINT           = 2501542;
+    public static final int TEXT_SPLASH                = 2501543;
+    public static final int TEXT_SPLASH_ON             = 2501544;
+    public static final int TEXT_SPLASH_OFF            = 2501545;
+    public static final int TEXT_SPLASH_HINT           = 2501546;
 
     private static final String[] FALLBACK_TEXTS = new String[]{
         "CarPlay settings",
@@ -250,7 +263,11 @@ public final class CarPlaySettingsUi {
         "Updating...",
         "Update complete, please reboot",
         "Update failed",
-        "Check the card, then confirm to run the installer on the SD card"
+        "Check the card, then confirm to run the installer on the SD card",
+        "Connect animation",
+        "On",
+        "Off",
+        "Play the animation on the cluster while CarPlay connects"
     };
 
     private static final int[] SUBMENU_BITMAPS = new int[]{39, 39, 39, 39};
@@ -268,6 +285,7 @@ public final class CarPlaySettingsUi {
     private static volatile ChoiceModel cardAlphaModel;
     private static volatile ChoiceModel rgiVcModel;
     private static volatile ChoiceModel updateModel;
+    private static volatile ChoiceModel splashModel;
 
     private static volatile MenuItemController spatialMenuItem;
     private static volatile MenuItemController upmixMenuItem;
@@ -277,6 +295,7 @@ public final class CarPlaySettingsUi {
     private static volatile MenuItemController cardAlphaMenuItem;
     private static volatile MenuItemController rgiVcMenuItem;
     private static volatile MenuItemController updateMenuItem;
+    private static volatile MenuItemController splashMenuItem;
 
     private static volatile int pendingSpatial    = SPATIAL_DEFAULT;
     private static volatile int pendingUpmixChoice = CHOICE_NORMAL;
@@ -287,6 +306,7 @@ public final class CarPlaySettingsUi {
     private static volatile int pendingRgiFar     = RGI_FAR_DEFAULT;
     private static volatile int pendingCardAlpha  = CARD_ALPHA_DEFAULT;
     private static volatile int pendingRgiVc      = RGI_VC_DEFAULT;
+    private static volatile int pendingSplash     = SPLASH_DEFAULT;
 
     private static volatile int currentSpatial    = SPATIAL_DEFAULT;
     private static volatile int currentLevel      = LEVEL_NORMAL;
@@ -297,9 +317,10 @@ public final class CarPlaySettingsUi {
     private static volatile int currentRgiFar     = RGI_FAR_DEFAULT;
     private static volatile int currentCardAlpha  = CARD_ALPHA_DEFAULT;
     private static volatile int currentRgiVc      = RGI_VC_DEFAULT;
+    private static volatile int currentSplash     = SPLASH_DEFAULT;
     /* Cluster stage (measured on the car): popup=true is the FULL-MAP stage,
-     * popup=false is the SPORT stage.  Sport forces the plate fully opaque;
-     * full map follows the user's transparency setting. */
+     * popup=false is the SPORT stage.  Sport keeps the factory look (no plate at
+     * all); only the full-map stage follows the 30/50/100 setting. */
     private static volatile boolean currentStagePopup;
 
     private CarPlaySettingsUi() {}
@@ -373,6 +394,7 @@ public final class CarPlaySettingsUi {
                 FlushValuesDict.register(NAMESPACE, KEY_CARD_ALPHA);
                 FlushValuesDict.register(NAMESPACE, KEY_RGI_VC);
                 FlushValuesDict.register(NAMESPACE, KEY_CARD_CYCLE);
+                FlushValuesDict.register(NAMESPACE, KEY_SPLASH);
             } catch (Throwable t) {
                 Log.w(TAG, "flush key not registered: " + t);
             }
@@ -397,6 +419,7 @@ public final class CarPlaySettingsUi {
             currentRgiFar = readBounded(KEY_RGI_FAR, RGI_FAR_DEFAULT, 0, 1);
             currentCardAlpha = readBounded(KEY_CARD_ALPHA, CARD_ALPHA_DEFAULT, 0, 100);
             currentRgiVc = readBounded(KEY_RGI_VC, RGI_VC_DEFAULT, 0, 2);
+            currentSplash = readBounded(KEY_SPLASH, SPLASH_DEFAULT, 0, 1);
             writeSettingsFile();
             show(currentSpatial, levelToChoice(currentLevel));
             showAltScreen(currentAltScreen);
@@ -406,6 +429,7 @@ public final class CarPlaySettingsUi {
             showRgiFar(currentRgiFar);
             showCardAlpha(currentCardAlpha);
             showRgiVc(currentRgiVc);
+            showSplash(currentSplash);
             syncMenuEnabledStates();
             sendAltConfigToHook();
             Log.i(TAG, "boot level=" + currentLevel + " (choice=" + levelToChoice(currentLevel)
@@ -595,9 +619,9 @@ public final class CarPlaySettingsUi {
     }
 
     /** Cluster stage flip (from ClusterLayerController.applyNow).  Measured
-     *  mapping: popup=true = full-map stage -> follow the setting; popup=false
-     *  = Sport stage -> fully opaque (transparency 0).  Rewrites the settings
-     *  file so the renderer picks the value up within a second. */
+     *  mapping: popup=true = full-map stage, popup=false = Sport stage.  Sport
+     *  writes 0 (the renderer skips the plate entirely = factory look); full map
+     *  writes the user's 30/50/100. */
     public static void onClusterStageChanged(boolean popup) {
         if (currentStagePopup == popup) return;
         currentStagePopup = popup;
@@ -606,15 +630,39 @@ public final class CarPlaySettingsUi {
             + " effective card_alpha=" + getEffectiveCardAlpha());
     }
 
-    /** Effective plate opacity written to the settings file. */
+    /** Effective plate opacity written to the settings file (0 = no plate). */
     public static int getEffectiveCardAlpha() {
-        return currentStagePopup ? currentCardAlpha : 100;
+        return currentStagePopup ? currentCardAlpha : 0;
     }
 
     /** The user picked a combo-box index (0=Always, 1=Auto-hide, 2=Hidden). */
     public static void selectRgiVcChoice(int choice) {
         selectRgiVc(choice >= RGI_VC_ALWAYS && choice <= RGI_VC_HIDDEN
             ? choice : RGI_VC_ALWAYS);
+    }
+
+    /** Connect animation on/off (1=on, 0=off). */
+    public static void selectSplash(int mode) {
+        if (mode != SPLASH_OFF && mode != SPLASH_ON) return;
+        currentSplash = mode;
+        storeKey(KEY_SPLASH, mode);
+        writeSettingsFile();
+        try { showSplash(mode); } catch (Throwable t) { /* mirror only */ }
+        Log.i(TAG, "selected splash " + mode);
+    }
+
+    /** Combo index: 0 = on, 1 = off. */
+    public static void selectSplashChoice(int idx) {
+        selectSplash(idx == 0 ? SPLASH_ON : SPLASH_OFF);
+    }
+
+    public static void showSplash(int mode) {
+        try {
+            int v = mode == SPLASH_ON ? 0 : 1;   /* combo index */
+            pendingSplash = mode;
+            ChoiceModel m = splashModel;
+            if (m != null) m.setValue(v);
+        } catch (Throwable t) { /* UI mirror only */ }
     }
 
     /* ---- "从 SD 卡更新" row: check / confirm / cancel + status values ------- */
@@ -650,17 +698,28 @@ public final class CarPlaySettingsUi {
                 String s = readUpdateLog();
                 try {
                     if (s.indexOf("DONE (install)") >= 0) {
-                        m.setValue(4);
+                        m.setValue(2);
+                        showUpdateResult(TEXT_UPDATE_DONE);
                         updateTimer.cancel();
                         Log.w(TAG, "update: DONE (reboot required)");
                     } else if (s.indexOf("FAILED") >= 0) {
-                        m.setValue(5);
+                        m.setValue(2);
+                        showUpdateResult(TEXT_UPDATE_FAILED);
                         updateTimer.cancel();
                         Log.w(TAG, "update: FAILED");
                     }
                 } catch (Throwable t) { /* HMI thread only for setValue */ }
             }
         }, 2000L, 2000L);
+    }
+
+    /** Best-effort visible reminder without a popup API: switch the update row's
+     *  Infoline text id to the result text so focusing the row shows it. */
+    private static void showUpdateResult(int textId) {
+        try {
+            MenuItemController item = updateMenuItem;
+            if (item != null) item.setInfolineTextIdEnabled(textId);
+        } catch (Throwable t) { /* reminder only */ }
     }
 
     /** 0=检查 SD 卡, 1=确认执行, 2=取消 (3=更新中/4=完成/5=失败 are status-only). */
@@ -680,7 +739,7 @@ public final class CarPlaySettingsUi {
             case 1:  /* 确认执行 */
                 boolean sent = CarplayBus.getInstance().sendBinary(
                     CarplayBus.CMD_UPDATE, new byte[]{1});
-                if (m != null) try { m.setValue(3); } catch (Throwable t) { }
+                if (m != null) try { m.setValue(1); } catch (Throwable t) { }
                 Log.w(TAG, "update: started" + (sent ? "" : " (bus down)"));
                 startUpdatePoll(m);
                 break;
@@ -797,6 +856,22 @@ public final class CarPlaySettingsUi {
              + "\ncard_mode=" + rgiVc + "\n";
     }
 
+    /** Same as the 9-argument form plus the connect-animation switch. */
+    public static String formatSettings(int spatial, int upmix, int altscreen, int altUrl,
+                                        int altLayout, int rgiEnabled, int rgiFar,
+                                        int cardAlpha, int rgiVc, int splash) {
+        return "spatial=" + spatial
+             + "\nupmix=" + upmix
+             + "\naltscreen=" + altscreen
+             + "\nalt_url=" + altUrl
+             + "\nalt_layout=" + altLayout
+             + "\nrgi=" + rgiEnabled
+             + "\nrgi_far=" + rgiFar
+             + "\ncard_alpha=" + cardAlpha
+             + "\ncard_mode=" + rgiVc
+             + "\nsplash=" + splash + "\n";
+    }
+
     public static String formatSettings(int spatial, int upmix) {
         return "spatial=" + spatial + "\nupmix=" + upmix + "\n";
     }
@@ -807,7 +882,7 @@ public final class CarPlaySettingsUi {
             out = new FileOutputStream(SETTINGS_FILE);
             String content = formatSettings(currentSpatial, currentLevel, currentAltScreen,
                 currentAltUrl, currentAltLayout, currentRgiEnabled, currentRgiFar,
-                getEffectiveCardAlpha(), currentRgiVc);
+                getEffectiveCardAlpha(), currentRgiVc, currentSplash);
             out.write(content.getBytes("UTF-8"));
         } catch (Throwable t) {
             Log.w(TAG, "cannot write " + SETTINGS_FILE + ": " + t);
@@ -924,11 +999,11 @@ public final class CarPlaySettingsUi {
         private static final int[] EXTRA_MODELS = new int[]{
             MODEL_SPATIAL, MODEL_UPMIX, MODEL_ALTSCREEN, MODEL_ALT_URL,
             MODEL_ALT_LAYOUT, MODEL_RGI_ENABLED, MODEL_RGI_FAR, MODEL_CARD_ALPHA,
-            MODEL_RGI_VC, MODEL_UPDATE
+            MODEL_RGI_VC, MODEL_UPDATE, MODEL_SPLASH
         };
 
         Bank() {
-            int need = INDEX_UPDATE + 1;
+            int need = INDEX_SPLASH + 1;
             if (this.models.length < need) {
                 HMIModel[] grown = new HMIModel[need];
                 System.arraycopy(this.models, 0, grown, 0, this.models.length);
@@ -1118,6 +1193,23 @@ public final class CarPlaySettingsUi {
                 updateModel = m;
                 return;
             }
+            if (i == INDEX_SPLASH) {
+                if (this.models[i] != null) return;
+                final ChoiceModel m = new ChoiceModel(MODEL_SPLASH);
+                m.setChoiceListener(new DefaultChoiceListener() {
+                    public void itemSelected(int id, int value, int unused, int terminal) {
+                        try {
+                            int v = value == 0 ? 0 : 1;
+                            m.setValue(v);
+                            selectSplashChoice(v);
+                        } catch (Throwable t) { /* never into the HMI thread */ }
+                    }
+                });
+                m.setValue(pendingSplash == SPLASH_ON ? 0 : 1);
+                this.models[i] = m;
+                splashModel = m;
+                return;
+            }
             super.createModel(i);
         }
     }
@@ -1150,7 +1242,7 @@ public final class CarPlaySettingsUi {
 
         public String getText(int id) {
             String s = super.getText(id);
-            if ((s == null || s.length() == 0) && id >= TEXT_TITLE && id <= TEXT_UPDATE_HINT) {
+            if ((s == null || s.length() == 0) && id >= TEXT_TITLE && id <= TEXT_SPLASH_HINT) {
                 return FALLBACK_TEXTS[id - TEXT_TITLE];
             }
             return s;
@@ -1158,7 +1250,7 @@ public final class CarPlaySettingsUi {
 
         public int getTextStatus(int id) {
             int st = super.getTextStatus(id);
-            if (st == 0 && id >= TEXT_TITLE && id <= TEXT_UPDATE_HINT) {
+            if (st == 0 && id >= TEXT_TITLE && id <= TEXT_SPLASH_HINT) {
                 return 8;
             }
             return st;
@@ -1399,12 +1491,19 @@ public final class CarPlaySettingsUi {
             // Row 10: Update from SD card (Check SD card / Confirm update / Cancel;
             // the last three combo values are status-only: updating/done/failed).
             MenuItemController updateItem = createComboItem(terminal, MODEL_UPDATE,
-                TEXT_UPDATE, new int[]{TEXT_UPDATE_CHECK, TEXT_UPDATE_CONFIRM, TEXT_UPDATE_CANCEL,
-                    TEXT_UPDATE_RUNNING, TEXT_UPDATE_DONE, TEXT_UPDATE_FAILED},
+                TEXT_UPDATE, new int[]{TEXT_UPDATE_CHECK, TEXT_UPDATE_CONFIRM, TEXT_UPDATE_CANCEL},
                 TEXT_UPDATE_HINT, INTERNAL_ID_UPDATE);
             registerScreenView(screen, MODEL_UPDATE, updateItem);
             menu.addWithPosition(updateItem, pos++);
             updateMenuItem = updateItem;
+
+            // Row 11: Connect animation (On | Off) - splash.bin on the cluster.
+            MenuItemController splashItem = createComboItem(terminal, MODEL_SPLASH,
+                TEXT_SPLASH, new int[]{TEXT_SPLASH_ON, TEXT_SPLASH_OFF},
+                TEXT_SPLASH_HINT, INTERNAL_ID_SPLASH);
+            registerScreenView(screen, MODEL_SPLASH, splashItem);
+            menu.addWithPosition(splashItem, pos++);
+            splashMenuItem = splashItem;
 
             syncAudioRowsEnabledState();
             syncMenuEnabledStates();

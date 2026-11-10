@@ -125,6 +125,12 @@ struct screen_egl_present {
     unsigned long loader_frames;
     unsigned long loader_failures;
     int loader_first_logged;
+    /* splash.bin: CarPlay-connect frame animation drawn before PRISM */
+    GLuint splash_program, splash_tex;
+    GLint splash_a_pos, splash_u_tex;
+    unsigned char *splash_blob;
+    uint32_t *splash_off, *splash_len;
+    int splash_count, splash_fps, splash_loaded, splash_last, splash_uploaded;
     /* A posted waiting picture must exist before the thread can race an IDR. */
     /* Stable process-lifetime word owned by sink_omx_qnx.  The control thread
      * updates it atomically; EGL remains exclusively on the loader thread. */
@@ -867,6 +873,142 @@ static void ep_draw_waiting(screen_egl_present_t *p, const prism_layout_t *layou
     glDisableVertexAttribArray((GLuint)p->loader_attr_pos);
 }
 
+/* ---- splash.bin: frame animation for the CarPlay connect screen ---------- */
+#define EP_SPLASH_PATH       "/mnt/app/root/hooks/splash.bin"
+#define EP_SPLASH_PATH_LOCAL "./splash.bin"
+
+/* /tmp/carplay_settings "splash=0" disables the custom animation (default on). */
+static int ep_splash_enabled(void) {
+    FILE *f = fopen("/tmp/carplay_settings", "r");
+    char line[128];
+    int on = 1;
+    if (!f) return 1;
+    while (fgets(line, sizeof(line), f)) {
+        if (!strncmp(line, "splash=", 7)) on = atoi(line + 7) ? 1 : 0;
+    }
+    fclose(f);
+    return on;
+}
+
+static int ep_splash_load(screen_egl_present_t *p) {
+    FILE *f;
+    long size;
+    unsigned char *buf;
+    uint32_t count, i, pos;
+    if (p->splash_loaded) return p->splash_blob ? 0 : -1;
+    p->splash_loaded = 1;
+    if (!ep_splash_enabled()) return -1;
+    f = fopen(EP_SPLASH_PATH, "rb");
+    if (!f) f = fopen(EP_SPLASH_PATH_LOCAL, "rb");
+    if (!f) return -1;
+    fseek(f, 0, SEEK_END);
+    size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    if (size < 10) { fclose(f); return -1; }
+    buf = (unsigned char *)malloc((size_t)size);
+    if (!buf) { fclose(f); return -1; }
+    if (fread(buf, 1, (size_t)size, f) != (size_t)size) { free(buf); fclose(f); return -1; }
+    fclose(f);
+    if (memcmp(buf, "SPL1", 4) != 0) { free(buf); return -1; }
+    count = (uint32_t)buf[4] | ((uint32_t)buf[5] << 8);
+    p->splash_fps = (int)((uint32_t)buf[6] | ((uint32_t)buf[7] << 8));
+    if (!count || p->splash_fps <= 0) { free(buf); return -1; }
+    p->splash_off = (uint32_t *)malloc(sizeof(uint32_t) * count);
+    p->splash_len = (uint32_t *)malloc(sizeof(uint32_t) * count);
+    if (!p->splash_off || !p->splash_len) { free(buf); return -1; }
+    pos = 8;
+    for (i = 0; i < count; i++) {
+        uint32_t len;
+        if (pos + 4 > (uint32_t)size) { free(buf); return -1; }
+        len = (uint32_t)buf[pos] | ((uint32_t)buf[pos + 1] << 8)
+            | ((uint32_t)buf[pos + 2] << 16) | ((uint32_t)buf[pos + 3] << 24);
+        pos += 4;
+        if (!len || pos + len > (uint32_t)size) { free(buf); return -1; }
+        p->splash_off[i] = pos;
+        p->splash_len[i] = len;
+        pos += len;
+    }
+    p->splash_count = (int)count;
+    p->splash_blob = buf;
+    fprintf(stderr, "altscreen_render[loader]: splash.bin %d frames @%d fps\n",
+            p->splash_count, p->splash_fps);
+    return 0;
+}
+
+static int ep_make_splash_program(screen_egl_present_t *p) {
+    static const char *vs_src =
+        "attribute vec2 a_pos;\n"
+        "varying vec2 v_uv;\n"
+        "void main() { v_uv = a_pos * 0.5 + 0.5; gl_Position = vec4(a_pos, 0.0, 1.0); }\n";
+    static const char *fs_src =
+        "precision mediump float;\n"
+        "uniform sampler2D u_tex;\n"
+        "varying vec2 v_uv;\n"
+        "void main() { gl_FragColor = texture2D(u_tex, vec2(v_uv.x, 1.0 - v_uv.y)); }\n";
+    GLuint vs = 0, fs = 0;
+    GLint ok = 0;
+    p->splash_program = glCreateProgram();
+    if (!p->splash_program) return -1;
+    vs = ep_compile_shader(GL_VERTEX_SHADER, vs_src, "splash vertex");
+    fs = ep_compile_shader(GL_FRAGMENT_SHADER, fs_src, "splash fragment");
+    if (!vs || !fs) goto fail;
+    glAttachShader(p->splash_program, vs);
+    glAttachShader(p->splash_program, fs);
+    glLinkProgram(p->splash_program);
+    glGetProgramiv(p->splash_program, GL_LINK_STATUS, &ok);
+    if (vs) glDeleteShader(vs);
+    if (fs) glDeleteShader(fs);
+    if (!ok) goto fail;
+    p->splash_a_pos = glGetAttribLocation(p->splash_program, "a_pos");
+    p->splash_u_tex = glGetUniformLocation(p->splash_program, "u_tex");
+    if (p->splash_a_pos < 0 || p->splash_u_tex < 0) goto fail;
+    glGenTextures(1, &p->splash_tex);
+    return p->splash_tex ? 0 : -1;
+fail:
+    if (p->splash_program) { glDeleteProgram(p->splash_program); p->splash_program = 0; }
+    return -1;
+}
+
+/* Returns 1 when an animation frame was drawn, 0 when disabled/finished/failed
+ * (caller then draws PRISM).  The animation plays once per connect. */
+static int ep_splash_frame(screen_egl_present_t *p, uint64_t elapsed_ms) {
+    static const float quad[12] = {
+        -1.0f, -1.0f,  1.0f, -1.0f,  1.0f, 1.0f,
+        -1.0f, -1.0f,  1.0f,  1.0f, -1.0f, 1.0f
+    };
+    int index, w = 0, h = 0;
+    unsigned char *rgba;
+    if (!p) return 0;
+    if (ep_splash_load(p) != 0) return 0;
+    if (!p->splash_program && ep_make_splash_program(p) != 0) return 0;
+    index = (int)((elapsed_ms * (uint64_t)p->splash_fps) / 1000ULL);
+    if (index >= p->splash_count) return 0;
+    if (index != p->splash_last || !p->splash_uploaded) {
+        rgba = prism_decode_png(p->splash_blob + p->splash_off[index],
+                               p->splash_len[index], &w, &h);
+        if (!rgba) return 0;
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, p->splash_tex);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
+        prism_free_image(rgba);
+        p->splash_last = index;
+        p->splash_uploaded = 1;
+    }
+    glUseProgram(p->splash_program);
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_BLEND);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, p->splash_tex);
+    glUniform1i(p->splash_u_tex, 0);
+    glEnableVertexAttribArray((GLuint)p->splash_a_pos);
+    glVertexAttribPointer((GLuint)p->splash_a_pos, 2, GL_FLOAT, GL_FALSE, 0, quad);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+    glDisableVertexAttribArray((GLuint)p->splash_a_pos);
+    return 1;
+}
+
 static int ep_loader_frame(screen_egl_present_t *p, uint64_t elapsed_ms) {
     GLenum gl_error = GL_NO_ERROR;
     int ok = -1;
@@ -889,7 +1031,8 @@ static int ep_loader_frame(screen_egl_present_t *p, uint64_t elapsed_ms) {
 
     {
         const float raster[4]={0,0,PRISM_WIDTH,PRISM_HEIGHT};
-        ep_draw_waiting(p,&layout,elapsed_ms,p->width,p->height,raster);
+        if (!ep_splash_frame(p, elapsed_ms))
+            ep_draw_waiting(p,&layout,elapsed_ms,p->width,p->height,raster);
     }
     p->loader_elapsed_ms=elapsed_ms;
     p->transition_layout=layout;

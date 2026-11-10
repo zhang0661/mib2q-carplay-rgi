@@ -325,9 +325,10 @@ public final class ClusterLayerController {
             int dy = popup ? geometry.popupY : geometry.inTubeY;
             int backing = popup ? BACKING_POPUP : BACKING_SPORT;
             int otherBacking = popup ? BACKING_SPORT : BACKING_POPUP;
-            /* Backing follows the same stage rule as the plate: translucent
-             * plate (full-map stage + card_alpha < 100) -> backing transparent,
-             * otherwise stock backing stays on. */
+            /* Backing follows the plate: when the plate is translucent (full-map
+             * stage with card_alpha < 100) the stock backing goes transparent so
+             * the map shows through; in the Sport stage the plate is not drawn at
+             * all and the backing keeps the factory look. */
             int backingOpacity =
                 (CarPlaySettingsUi.getCardAlpha() < 100 && popup) ? 0 : carplayOpacity;
             dm.setCropping(MANEUVER, terminal, cx, cy, cw, ch, dx, dy, cw, ch);
@@ -373,8 +374,7 @@ public final class ClusterLayerController {
             if (line.equals(lastAppliedSignature)) return;
             lastAppliedSignature = line;
         }
-        /* Stage flip: Sport = fully opaque plate, full map = follow the
-         * user's transparency setting.  Idempotent inside. */
+        /* Stage flip: Sport = no plate (factory), full map = 30/50/100. */
         CarPlaySettingsUi.onClusterStageChanged(popup);
         Log.i("ClusterLayers", line);
     }
