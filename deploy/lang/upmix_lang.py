@@ -81,11 +81,14 @@ SURROUND_EXTRAS = {
 # 24: TEXT_RGI_FAR_HINT         (2501524)
 # 25: TEXT_CARD_ALPHA           (2501525)
 # 26: TEXT_CARD_ALPHA_HINT      (2501526)
-# 27: TEXT_CARD_ALPHA_100       (2501527)
-# 28: TEXT_CARD_ALPHA_75        (2501528)
-# 29: TEXT_CARD_ALPHA_50        (2501529)
-# 30: TEXT_CARD_ALPHA_25        (2501530)
-# 31: TEXT_CARD_ALPHA_0         (2501531)
+# 27: TEXT_CARD_ALPHA_30        (2501527)
+# 28: TEXT_CARD_ALPHA_50        (2501528)
+# 29: TEXT_CARD_ALPHA_100       (2501529)
+# 30: TEXT_RGI_VC               (2501530)
+# 31: TEXT_RGI_VC_ALWAYS        (2501531)
+# 32: TEXT_RGI_VC_AUTO          (2501532)
+# 33: TEXT_RGI_VC_HINT          (2501533)
+# 34: TEXT_RGI_VC_HIDDEN        (2501534)
 CM_TEXTS = {
     "en": [
         "CarPlay settings",
@@ -115,11 +118,14 @@ CM_TEXTS = {
         "Show the next turn in advance, or a straight arrow until you get closer",
         "Turn Card Background",
         "Opacity of the cockpit turn-card background",
-        "100 %",
-        "75 %",
+        "30 %",
         "50 %",
-        "25 %",
-        "Off",
+        "100 %",
+        "Cockpit Turn Card",
+        "Always visible",
+        "Auto-hide when far",
+        "Hide the cockpit turn card while the next maneuver is far away and show it on approach",
+        "Hidden",
     ],
     "de": [
         "CarPlay-Einstellungen",
