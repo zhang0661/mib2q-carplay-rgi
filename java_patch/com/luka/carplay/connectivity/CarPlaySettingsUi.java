@@ -8,9 +8,9 @@
  *   5. Route Guidance     (checkbox: On | Off -> KEY_RGI_ENABLED 1005, rgi=0|1; unlocks rows 6..8)
  *   6. CarPlay Map Cards  (2-choice: Hide when guiding | Always show -> KEY_ALT_URL 1003, alt_url=0|1, CMD_ALT_CFG)
  *   7. Turn Preview       (2-choice: Always next turn | Straight arrow when far -> KEY_RGI_FAR 1006, rgi_far=0|1)
- *   8. Cockpit Turn Card  (2-choice: Always visible | Auto-hide when far -> KEY_RGI_VC 1007, rgi_vc=0|1)
- *      (documented above, not implemented yet; key 1007 stays reserved for it)
- *   9. Card Background    (5-choice: 100 % | 75 % | 50 % | 25 % | Off -> KEY_CARD_ALPHA 1008, card_alpha=0..100;
+ *   8. Cockpit Turn Card  (3-choice: Always visible | Auto-hide when far | Hidden -> KEY_RGI_VC 1007, rgi_vc=0|1|2;
+ *                          the steering-wheel star key cycles 显示 -> 隐藏 -> 位置左/中/右 -> 显示)
+ *   9. Card Background    (3-choice: 30 % | 50 % | 100 % -> KEY_CARD_ALPHA 1008, card_alpha=0..100;
  *                          cockpit turn-card plate drawn by maneuver_render)
  * Each row carries a native MMI Infoline hint shown on focus.
  *
@@ -69,7 +69,7 @@ public final class CarPlaySettingsUi {
     private static final int KEY_ALT_LAYOUT  = 1004;
     private static final int KEY_RGI_ENABLED = 1005;
     private static final int KEY_RGI_FAR     = 1006;
-    /* 1007 stays reserved for KEY_RGI_VC (Cockpit Turn Card, documented above). */
+    private static final int KEY_RGI_VC      = 1007;
     private static final int KEY_CARD_ALPHA  = 1008;
 
     public static final int LEVEL_OFF = 0;
@@ -107,7 +107,13 @@ public final class CarPlaySettingsUi {
     /* Cockpit turn-card background: percent of the card plate, 100 = unchanged,
      * 0 = no plate (the stock KDK backing shows through again). */
     public static final int CARD_ALPHA_DEFAULT = 100;
-    private static final int[] CARD_ALPHA_STEPS = new int[]{100, 75, 50, 25, 0};
+    private static final int[] CARD_ALPHA_STEPS = new int[]{30, 50, 100};
+
+    /* Cockpit turn-card display mode. */
+    public static final int RGI_VC_ALWAYS = 0;
+    public static final int RGI_VC_AUTO = 1;
+    public static final int RGI_VC_HIDDEN = 2;
+    public static final int RGI_VC_DEFAULT = RGI_VC_ALWAYS;
 
     public static final String SETTINGS_FILE = "/tmp/carplay_settings"; // hook/audio/audio_hook.h (SPA_SETTINGS_FILE)
 
@@ -119,6 +125,7 @@ public final class CarPlaySettingsUi {
     public static final int MODEL_RGI_ENABLED = 2500505;       // module 25, index 505
     public static final int MODEL_RGI_FAR     = 2500506;       // module 25, index 506
     public static final int MODEL_CARD_ALPHA  = 2500507;       // module 25, index 507
+    public static final int MODEL_RGI_VC      = 2500508;       // module 25, index 508
 
     private static final int INDEX_SPATIAL     = MODEL_SPATIAL % 100000;
     private static final int INDEX_UPMIX       = MODEL_UPMIX % 100000;
@@ -128,6 +135,7 @@ public final class CarPlaySettingsUi {
     private static final int INDEX_RGI_ENABLED = MODEL_RGI_ENABLED % 100000;
     private static final int INDEX_RGI_FAR     = MODEL_RGI_FAR % 100000;
     private static final int INDEX_CARD_ALPHA  = MODEL_CARD_ALPHA % 100000;
+    private static final int INDEX_RGI_VC      = MODEL_RGI_VC % 100000;
 
     private static final int DRAWER_CM_OPT        = 2500001;
     private static final int SCREEN_ABOUT_CARPLAY = 2500140;
@@ -143,8 +151,9 @@ public final class CarPlaySettingsUi {
     private static final int INTERNAL_ID_ALT_URL     = 2509915;
     private static final int INTERNAL_ID_RGI_FAR     = 2509916;
     private static final int INTERNAL_ID_CARD_ALPHA  = 2509917;
+    private static final int INTERNAL_ID_RGI_VC      = 2509918;
 
-    // HMIConnectivityEvoHigh string table slots 1500..1531 (text ids 2501500..2501531)
+    // HMIConnectivityEvoHigh string table slots 1500..1529 (text ids 2501500..2501529)
     public static final int TEXT_TITLE                  = 2501500;
     public static final int TEXT_SPATIAL                = 2501501;
     public static final int TEXT_SPATIAL_HINT           = 2501502;
@@ -172,11 +181,14 @@ public final class CarPlaySettingsUi {
     public static final int TEXT_RGI_FAR_HINT           = 2501524;
     public static final int TEXT_CARD_ALPHA            = 2501525;
     public static final int TEXT_CARD_ALPHA_HINT       = 2501526;
-    public static final int TEXT_CARD_ALPHA_100        = 2501527;
-    public static final int TEXT_CARD_ALPHA_75         = 2501528;
-    public static final int TEXT_CARD_ALPHA_50         = 2501529;
-    public static final int TEXT_CARD_ALPHA_25         = 2501530;
-    public static final int TEXT_CARD_ALPHA_0          = 2501531;
+    public static final int TEXT_CARD_ALPHA_30         = 2501527;
+    public static final int TEXT_CARD_ALPHA_50         = 2501528;
+    public static final int TEXT_CARD_ALPHA_100        = 2501529;
+    public static final int TEXT_RGI_VC                = 2501530;
+    public static final int TEXT_RGI_VC_ALWAYS         = 2501531;
+    public static final int TEXT_RGI_VC_AUTO           = 2501532;
+    public static final int TEXT_RGI_VC_HINT           = 2501533;
+    public static final int TEXT_RGI_VC_HIDDEN         = 2501534;
 
     private static final String[] FALLBACK_TEXTS = new String[]{
         "CarPlay settings",
@@ -206,11 +218,14 @@ public final class CarPlaySettingsUi {
         "Show the next turn in advance, or a straight arrow until you get closer",
         "Turn Card Background",
         "Opacity of the cockpit turn-card background",
-        "100 %",
-        "75 %",
+        "30 %",
         "50 %",
-        "25 %",
-        "Off"
+        "100 %",
+        "Cockpit Turn Card",
+        "Always visible",
+        "Auto-hide when far",
+        "Hidden",
+        "Hide the cockpit turn card while the next maneuver is far away and show it on approach"
     };
 
     private static final int[] SUBMENU_BITMAPS = new int[]{39, 39, 39, 39};
@@ -226,6 +241,7 @@ public final class CarPlaySettingsUi {
     private static volatile ChoiceModel rgiEnabledModel;
     private static volatile ChoiceModel rgiFarModel;
     private static volatile ChoiceModel cardAlphaModel;
+    private static volatile ChoiceModel rgiVcModel;
 
     private static volatile MenuItemController spatialMenuItem;
     private static volatile MenuItemController upmixMenuItem;
@@ -233,6 +249,7 @@ public final class CarPlaySettingsUi {
     private static volatile MenuItemController altUrlMenuItem;
     private static volatile MenuItemController rgiFarMenuItem;
     private static volatile MenuItemController cardAlphaMenuItem;
+    private static volatile MenuItemController rgiVcMenuItem;
 
     private static volatile int pendingSpatial    = SPATIAL_DEFAULT;
     private static volatile int pendingUpmixChoice = CHOICE_NORMAL;
@@ -242,6 +259,7 @@ public final class CarPlaySettingsUi {
     private static volatile int pendingRgiEnabled = RGI_ENABLED_DEFAULT;
     private static volatile int pendingRgiFar     = RGI_FAR_DEFAULT;
     private static volatile int pendingCardAlpha  = CARD_ALPHA_DEFAULT;
+    private static volatile int pendingRgiVc      = RGI_VC_DEFAULT;
 
     private static volatile int currentSpatial    = SPATIAL_DEFAULT;
     private static volatile int currentLevel      = LEVEL_NORMAL;
@@ -251,6 +269,7 @@ public final class CarPlaySettingsUi {
     private static volatile int currentRgiEnabled = RGI_ENABLED_DEFAULT;
     private static volatile int currentRgiFar     = RGI_FAR_DEFAULT;
     private static volatile int currentCardAlpha  = CARD_ALPHA_DEFAULT;
+    private static volatile int currentRgiVc      = RGI_VC_DEFAULT;
 
     private CarPlaySettingsUi() {}
 
@@ -321,6 +340,7 @@ public final class CarPlaySettingsUi {
                 FlushValuesDict.register(NAMESPACE, KEY_RGI_ENABLED);
                 FlushValuesDict.register(NAMESPACE, KEY_RGI_FAR);
                 FlushValuesDict.register(NAMESPACE, KEY_CARD_ALPHA);
+                FlushValuesDict.register(NAMESPACE, KEY_RGI_VC);
             } catch (Throwable t) {
                 Log.w(TAG, "flush key not registered: " + t);
             }
@@ -344,6 +364,7 @@ public final class CarPlaySettingsUi {
             currentRgiEnabled = readBounded(KEY_RGI_ENABLED, RGI_ENABLED_DEFAULT, 0, 1);
             currentRgiFar = readBounded(KEY_RGI_FAR, RGI_FAR_DEFAULT, 0, 1);
             currentCardAlpha = readBounded(KEY_CARD_ALPHA, CARD_ALPHA_DEFAULT, 0, 100);
+            currentRgiVc = readBounded(KEY_RGI_VC, RGI_VC_DEFAULT, 0, 2);
             writeSettingsFile();
             show(currentSpatial, levelToChoice(currentLevel));
             showAltScreen(currentAltScreen);
@@ -352,13 +373,14 @@ public final class CarPlaySettingsUi {
             showRgiEnabled(currentRgiEnabled);
             showRgiFar(currentRgiFar);
             showCardAlpha(currentCardAlpha);
+            showRgiVc(currentRgiVc);
             syncMenuEnabledStates();
             sendAltConfigToHook();
             Log.i(TAG, "boot level=" + currentLevel + " (choice=" + levelToChoice(currentLevel)
                 + "), spatial=" + currentSpatial + ", altscreen=" + currentAltScreen
                 + ", alt_url=" + currentAltUrl + ", alt_layout=" + currentAltLayout
                 + ", rgi=" + currentRgiEnabled + ", rgi_far=" + currentRgiFar
-                + ", card_alpha=" + currentCardAlpha);
+                + ", card_alpha=" + currentCardAlpha + ", rgi_vc=" + currentRgiVc);
         } catch (Throwable t) {
             Log.w(TAG, "boot failed: " + t);
         }
@@ -445,10 +467,9 @@ public final class CarPlaySettingsUi {
 
     /** The user picked the turn-card background opacity (0..100 percent). */
     public static void selectCardAlpha(int percent) {
-        int snapped = CARD_ALPHA_STEPS[0];
+        int snapped = CARD_ALPHA_STEPS[CARD_ALPHA_STEPS.length - 1];
         for (int i = 0; i < CARD_ALPHA_STEPS.length; i++) {
-            if (percent >= CARD_ALPHA_STEPS[i]) { snapped = CARD_ALPHA_STEPS[i]; break; }
-            snapped = CARD_ALPHA_STEPS[i];
+            if (percent <= CARD_ALPHA_STEPS[i]) { snapped = CARD_ALPHA_STEPS[i]; break; }
         }
         currentCardAlpha = snapped;
         storeKey(KEY_CARD_ALPHA, snapped);
@@ -470,6 +491,52 @@ public final class CarPlaySettingsUi {
         return currentCardAlpha;
     }
 
+    /** The user picked the cockpit turn-card display mode (0=Always, 1=Auto-hide, 2=Hidden). */
+    public static void selectRgiVc(int mode) {
+        if (mode < RGI_VC_ALWAYS || mode > RGI_VC_HIDDEN) return;
+        currentRgiVc = mode;
+        storeKey(KEY_RGI_VC, mode);
+        writeSettingsFile();
+        /* The renderer re-reads /tmp/carplay_settings once per second: no restart,
+         * no bus command. */
+        Log.i(TAG, "selected rgi_vc " + mode);
+    }
+
+    /** Star-key entry: 显示 -> 隐藏 -> 位置左 -> 位置中 -> 位置右 -> 显示. */
+    public static void cycleCardState() {
+        int next;
+        if (currentRgiVc == RGI_VC_HIDDEN) {
+            next = 2;                       /* hidden -> position left */
+        } else {
+            switch (currentAltLayout) {
+                case ALT_LAYOUT_LEFT:   next = 3; break;   /* left   -> center */
+                case ALT_LAYOUT_CENTER: next = 4; break;   /* center -> right  */
+                case ALT_LAYOUT_RIGHT:  next = 0; break;   /* right  -> show   */
+                default:                next = 1; break;   /* show   -> hide   */
+            }
+        }
+        Log.i(TAG, "star cycle -> state " + next);
+        switch (next) {
+            case 0: selectRgiVc(RGI_VC_ALWAYS); break;
+            case 1: selectRgiVc(RGI_VC_HIDDEN); break;
+            case 2: selectRgiVc(RGI_VC_ALWAYS); selectAltLayout(ALT_LAYOUT_LEFT); break;
+            case 3: selectRgiVc(RGI_VC_ALWAYS); selectAltLayout(ALT_LAYOUT_CENTER); break;
+            case 4: selectRgiVc(RGI_VC_ALWAYS); selectAltLayout(ALT_LAYOUT_RIGHT); break;
+            default: break;
+        }
+    }
+
+    /** Current turn-card display mode (RGI_VC_*). */
+    public static int getRgiVc() {
+        return currentRgiVc;
+    }
+
+    /** The user picked a combo-box index (0=Always, 1=Auto-hide, 2=Hidden). */
+    public static void selectRgiVcChoice(int choice) {
+        selectRgiVc(choice >= RGI_VC_ALWAYS && choice <= RGI_VC_HIDDEN
+            ? choice : RGI_VC_ALWAYS);
+    }
+
     static void syncMenuEnabledStates() {
         try {
             boolean clusterOn = (currentAltScreen == ALTSCREEN_ON);
@@ -482,6 +549,8 @@ public final class CarPlaySettingsUi {
             if (farItem != null) farItem.setEnabled(rgiOn);
             MenuItemController cardItem = cardAlphaMenuItem;
             if (cardItem != null) cardItem.setEnabled(rgiOn);
+            MenuItemController vcItem = rgiVcMenuItem;
+            if (vcItem != null) vcItem.setEnabled(rgiOn);
         } catch (Throwable t) { /* ignore */ }
     }
 
@@ -560,10 +629,11 @@ public final class CarPlaySettingsUi {
              + "\nrgi_far=" + rgiFar + "\n";
     }
 
-    /** Same as the 7-argument form plus the cockpit turn-card background opacity. */
+    /** Same as the 7-argument form plus the cockpit turn-card background opacity
+     * and the turn-card display mode. */
     public static String formatSettings(int spatial, int upmix, int altscreen, int altUrl,
                                         int altLayout, int rgiEnabled, int rgiFar,
-                                        int cardAlpha) {
+                                        int cardAlpha, int rgiVc) {
         return "spatial=" + spatial
              + "\nupmix=" + upmix
              + "\naltscreen=" + altscreen
@@ -571,7 +641,8 @@ public final class CarPlaySettingsUi {
              + "\nalt_layout=" + altLayout
              + "\nrgi=" + rgiEnabled
              + "\nrgi_far=" + rgiFar
-             + "\ncard_alpha=" + cardAlpha + "\n";
+             + "\ncard_alpha=" + cardAlpha
+             + "\ncard_mode=" + rgiVc + "\n";
     }
 
     public static String formatSettings(int spatial, int upmix) {
@@ -584,7 +655,7 @@ public final class CarPlaySettingsUi {
             out = new FileOutputStream(SETTINGS_FILE);
             String content = formatSettings(currentSpatial, currentLevel, currentAltScreen,
                 currentAltUrl, currentAltLayout, currentRgiEnabled, currentRgiFar,
-                currentCardAlpha);
+                currentCardAlpha, currentRgiVc);
             out.write(content.getBytes("UTF-8"));
         } catch (Throwable t) {
             Log.w(TAG, "cannot write " + SETTINGS_FILE + ": " + t);
@@ -674,12 +745,22 @@ public final class CarPlaySettingsUi {
         } catch (Throwable t) { /* UI mirror only */ }
     }
 
-    /** Mirror the stored opacity as the combo-box index (0=100 %, 4=Off). */
+    /** Mirror the turn-card display mode as the combo-box index (0/1/2). */
+    public static void showRgiVc(int mode) {
+        try {
+            int v = (mode >= RGI_VC_ALWAYS && mode <= RGI_VC_HIDDEN) ? mode : RGI_VC_ALWAYS;
+            pendingRgiVc = v;
+            ChoiceModel m = rgiVcModel;
+            if (m != null) m.setValue(v);
+        } catch (Throwable t) { /* UI mirror only */ }
+    }
+
+    /** Mirror the stored opacity as the combo-box index (0=30 %, 1=50 %, 2=100 %). */
     public static void showCardAlpha(int percent) {
         try {
             int idx = CARD_ALPHA_STEPS.length - 1;
             for (int i = 0; i < CARD_ALPHA_STEPS.length; i++) {
-                if (percent >= CARD_ALPHA_STEPS[i]) { idx = i; break; }
+                if (percent <= CARD_ALPHA_STEPS[i]) { idx = i; break; }
             }
             pendingCardAlpha = CARD_ALPHA_STEPS[idx];
             ChoiceModel m = cardAlphaModel;
@@ -690,11 +771,12 @@ public final class CarPlaySettingsUi {
     static final class Bank extends ConnectivityModelBank {
         private static final int[] EXTRA_MODELS = new int[]{
             MODEL_SPATIAL, MODEL_UPMIX, MODEL_ALTSCREEN, MODEL_ALT_URL,
-            MODEL_ALT_LAYOUT, MODEL_RGI_ENABLED, MODEL_RGI_FAR, MODEL_CARD_ALPHA
+            MODEL_ALT_LAYOUT, MODEL_RGI_ENABLED, MODEL_RGI_FAR, MODEL_CARD_ALPHA,
+            MODEL_RGI_VC
         };
 
         Bank() {
-            int need = INDEX_CARD_ALPHA + 1;
+            int need = INDEX_RGI_VC + 1;
             if (this.models.length < need) {
                 HMIModel[] grown = new HMIModel[need];
                 System.arraycopy(this.models, 0, grown, 0, this.models.length);
@@ -844,11 +926,29 @@ public final class CarPlaySettingsUi {
                 });
                 int start = CARD_ALPHA_STEPS.length - 1;
                 for (int k = 0; k < CARD_ALPHA_STEPS.length; k++) {
-                    if (pendingCardAlpha >= CARD_ALPHA_STEPS[k]) { start = k; break; }
+                    if (pendingCardAlpha <= CARD_ALPHA_STEPS[k]) { start = k; break; }
                 }
                 m.setValue(start);
                 this.models[i] = m;
                 cardAlphaModel = m;
+                return;
+            }
+            if (i == INDEX_RGI_VC) {
+                if (this.models[i] != null) return;
+                final ChoiceModel m = new ChoiceModel(MODEL_RGI_VC);
+                m.setChoiceListener(new DefaultChoiceListener() {
+                    public void itemSelected(int id, int value, int unused, int terminal) {
+                        try {
+                            int v = (value >= RGI_VC_ALWAYS && value <= RGI_VC_HIDDEN)
+                                ? value : RGI_VC_ALWAYS;
+                            m.setValue(v);
+                            selectRgiVcChoice(v);
+                        } catch (Throwable t) { /* never into the HMI thread */ }
+                    }
+                });
+                m.setValue(pendingRgiVc);
+                this.models[i] = m;
+                rgiVcModel = m;
                 return;
             }
             super.createModel(i);
@@ -883,7 +983,7 @@ public final class CarPlaySettingsUi {
 
         public String getText(int id) {
             String s = super.getText(id);
-            if ((s == null || s.length() == 0) && id >= TEXT_TITLE && id <= TEXT_CARD_ALPHA_0) {
+            if ((s == null || s.length() == 0) && id >= TEXT_TITLE && id <= TEXT_RGI_VC_HIDDEN) {
                 return FALLBACK_TEXTS[id - TEXT_TITLE];
             }
             return s;
@@ -891,7 +991,7 @@ public final class CarPlaySettingsUi {
 
         public int getTextStatus(int id) {
             int st = super.getTextStatus(id);
-            if (st == 0 && id >= TEXT_TITLE && id <= TEXT_CARD_ALPHA_0) {
+            if (st == 0 && id >= TEXT_TITLE && id <= TEXT_RGI_VC_HIDDEN) {
                 return 8;
             }
             return st;
@@ -1113,12 +1213,21 @@ public final class CarPlaySettingsUi {
             // Row 8: turn-card background opacity (100 % | 75 % | 50 % | 25 % | Off).
             // Lives in the guidance block: only meaningful while Route Guidance runs.
             MenuItemController cardAlphaItem = createComboItem(terminal, MODEL_CARD_ALPHA,
-                TEXT_CARD_ALPHA, new int[]{TEXT_CARD_ALPHA_100, TEXT_CARD_ALPHA_75,
-                    TEXT_CARD_ALPHA_50, TEXT_CARD_ALPHA_25, TEXT_CARD_ALPHA_0},
+                TEXT_CARD_ALPHA, new int[]{TEXT_CARD_ALPHA_30, TEXT_CARD_ALPHA_50,
+                    TEXT_CARD_ALPHA_100},
                 TEXT_CARD_ALPHA_HINT, INTERNAL_ID_CARD_ALPHA);
             registerScreenView(screen, MODEL_CARD_ALPHA, cardAlphaItem);
             menu.addWithPosition(cardAlphaItem, pos++);
             cardAlphaMenuItem = cardAlphaItem;
+
+            // Row 9: Cockpit Turn Card (Always visible | Auto-hide when far).
+            // The steering-wheel star key cycles the same two modes (cycleRgiVc).
+            MenuItemController rgiVcItem = createComboItem(terminal, MODEL_RGI_VC,
+                TEXT_RGI_VC, new int[]{TEXT_RGI_VC_ALWAYS, TEXT_RGI_VC_AUTO, TEXT_RGI_VC_HIDDEN},
+                TEXT_RGI_VC_HINT, INTERNAL_ID_RGI_VC);
+            registerScreenView(screen, MODEL_RGI_VC, rgiVcItem);
+            menu.addWithPosition(rgiVcItem, pos++);
+            rgiVcMenuItem = rgiVcItem;
 
             syncAudioRowsEnabledState();
             syncMenuEnabledStates();
