@@ -1,0 +1,39 @@
+name: build-renderer
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-renderer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - name: Checkout this fork
+        uses: actions/checkout@v4
+
+      - name: Fetch the QNX toolchain repo
+        uses: actions/checkout@v4
+        with:
+          repository: luka-dev/qnx65-armv7-toolchain
+          path: qnx65-toolchain
+
+      - name: Build toolchain image (GCC 8.5, ~40-60 min)
+        run: |
+          cd qnx65-toolchain
+          docker build --target base-8.5 -t qnx65-armv7-toolchain:latest .
+
+      - name: Build renderers
+        run: ./scripts/build_renderers.sh
+
+      - name: Build the LD_PRELOAD hook
+        run: ./scripts/build_hook.sh
+
+      - name: Upload binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: binaries
+          path: |
+            build/maneuver_render
+            build/altscreen_render
+            build/unprotected/libcarplay_hook.so
+            build/unprotected/libcarplay_apac.so
