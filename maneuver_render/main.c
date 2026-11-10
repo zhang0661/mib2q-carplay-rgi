@@ -99,23 +99,35 @@ static cr_engine_t g_engine;
 #define CARD_SETTINGS_FILE "/tmp/carplay_settings"
 #define CARD_ALPHA_DEFAULT 100
 static int g_card_alpha = CARD_ALPHA_DEFAULT;
+/* Turn-card display mode: 0 = always visible (stock), 1 = auto-hide while the
+ * maneuver is far away and slide back in on approach, 2 = hidden.  Written by
+ * CarPlaySettingsUi as card_mode= in the same settings file. */
+static int g_card_mode = 0;
+static int g_card_hidden = 0;
+#define CARD_AUTO_FAR_LEVEL 15   /* progress level 0..16; 16 = far */
 
 static void read_card_alpha(void) {
     FILE *f = fopen(CARD_SETTINGS_FILE, "r");
     char line[128];
     int value = g_card_alpha;
+    int mode = g_card_mode;
     if (!f) return;
     while (fgets(line, sizeof(line), f)) {
         if (!strncmp(line, "card_alpha=", 11)) {
             int parsed = atoi(line + 11);
             if (parsed >= 0 && parsed <= 100) value = parsed;
+        } else if (!strncmp(line, "card_mode=", 10)) {
+            int parsed = atoi(line + 10);
+            if (parsed >= 0 && parsed <= 2) mode = parsed;
         }
     }
     fclose(f);
-    if (value == g_card_alpha) return;
-    g_card_alpha = value;
-    g_engine.dirty = 1;
-    fprintf(stderr, "engine: card_alpha=%d\n", g_card_alpha);
+    if (value != g_card_alpha || mode != g_card_mode) {
+        g_card_alpha = value;
+        g_card_mode = mode;
+        g_engine.dirty = 1;
+        fprintf(stderr, "engine: card_alpha=%d card_mode=%d\n", g_card_alpha, g_card_mode);
+    }
 }
 
 // Independent panel input. Never passed into route geometry or animation.
@@ -750,6 +762,20 @@ int main(int argc, char **argv) {
              * Never let the maneuver's deferred snapshot rewind a newer tick. */
             g_engine.dirty=1;
         }
+        if (got_maneuver || got_progress) {
+            /* Auto-hide when far: slide the whole card out while the maneuver is
+             * far away and back in on approach.  Mode 2 hides it unconditionally;
+             * mode 0 keeps it permanently visible (stock behaviour). */
+            int hidden = (g_card_mode == 2)
+                || (g_card_mode == 1 && progress_level >= CARD_AUTO_FAR_LEVEL);
+            if (hidden != g_card_hidden) {
+                g_card_hidden = hidden;
+                maneuver_set_slide(hidden ? 0.0f : 1.0f);
+                g_engine.dirty = 1;
+                fprintf(stderr, "engine: card %s (mode=%d level=%d)\n",
+                        hidden ? "hidden" : "shown", g_card_mode, progress_level);
+            }
+        }
         if(cr_progress_tick(&g_arrow,progress_now)) g_engine.dirty=1;
 
         /* Tick engine state machine */
@@ -818,7 +844,8 @@ int main(int argc, char **argv) {
             render_set_route_progress(g_arrow.fill,g_arrow.path_weight,g_arrow.glow);
             watch_stage(WATCH_BEGIN_FRAME);
             render_begin_frame();
-            render_card_backdrop((float)g_card_alpha / (float)CARD_ALPHA_DEFAULT);
+            if (!g_card_hidden)
+                render_card_backdrop((float)g_card_alpha / (float)CARD_ALPHA_DEFAULT);
             watch_stage(WATCH_SCENE_DRAW);
             maneuver_draw(&g_engine.current, next_ptr);
             cr_rect_t panel_visible;
