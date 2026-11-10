@@ -96,7 +96,7 @@ valid queued state. See [Input commands](../altscreen-and-video/ALTSCREEN_INPUT_
 | 1004 | `alt_layout` | 0 Left, 1 Center, 2 Right; third byte |
 | 1005 | `rgi` | 0 Off, 1 On; Java route-guidance policy |
 | 1006 | `rgi_far` | 0 Always next turn, 1 Straight arrow when far; Java route-guidance policy |
-| 1007 | - | reserved for `KEY_RGI_VC` (Cockpit Turn Card); documented in `CarPlaySettingsUi`, not implemented yet |
+| 1007 | `rgi_vc` | 0 Cockpit turn card always visible, 1 auto-hide while far, 2 hidden; rendered as `card_mode`; the star key cycles 显示 -> 隐藏 -> 位置左/中/右 -> 显示 (positions ride `alt_layout`) |
 | 1008 | `card_alpha` | 0..100 percent of the cockpit turn-card plate, 100 = unchanged; read by `maneuver_render`, no bus command |
 
 `CMD_ALT_CFG 0x011B` is **three bytes**: `[enable, url_mode, layout]`; the native handler rejects payloads shorter than three bytes. RGI policy also invokes Java module callbacks; do not invent a separate native command for it. `spa_settings_reload()` restores audio boot values, while AltScreen reads its own fields. See [current audio controls](../audio/STEREO_TO_5_1_UPMIX.md#mmi-level), [CarPlaySettingsUi.java](../../java_patch/com/luka/carplay/connectivity/CarPlaySettingsUi.java) and `cfg_on_cmd` in [altscreen_hook.c](../../hook/altscreen/altscreen_hook.c). **[code]**
