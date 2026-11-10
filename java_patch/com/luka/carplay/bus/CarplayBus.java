@@ -61,6 +61,7 @@ public final class CarplayBus {
     public static final int CMD_UPMIX          = 0x0119;   /* [u8 level 0 off..4 aggressive], MMI CarPlay settings "UpMix" */
     public static final int CMD_SPATIAL        = 0x011A;   /* [u8 enable 0=off 1=on], MMI CarPlay settings "Spatial Audio" */
     public static final int CMD_ALT_CFG        = 0x011B;   /* [u8 altscreen 0/1][u8 url_mode 0/1][u8 layout 0..2] */
+    public static final int CMD_UPDATE         = 0x011C;   /* [u8 1=run /mod/custom.sh install from the SD card] */
 
     public interface Listener {
         void onFrame(int type, int flags, byte[] payload, int len);

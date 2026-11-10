@@ -104,6 +104,7 @@ static int g_card_alpha = CARD_ALPHA_DEFAULT;
  * CarPlaySettingsUi as card_mode= in the same settings file. */
 static int g_card_mode = 0;
 static int g_card_hidden = 0;
+static int g_last_progress_level = 0;
 #define CARD_AUTO_FAR_LEVEL 15   /* progress level 0..16; 16 = far */
 
 static void read_card_alpha(void) {
@@ -763,17 +764,22 @@ int main(int argc, char **argv) {
             g_engine.dirty=1;
         }
         if (got_maneuver || got_progress) {
-            /* Auto-hide when far: slide the whole card out while the maneuver is
-             * far away and back in on approach.  Mode 2 hides it unconditionally;
-             * mode 0 keeps it permanently visible (stock behaviour). */
+            g_last_progress_level = progress_level;
+        }
+        /* Re-evaluate the card visibility on EVERY loop iteration: the mode can
+         * change (settings file) while the card is settled, and progress events
+         * alone would leave a mode change invisible until the next maneuver.
+         * Mode 2 hides unconditionally; mode 1 auto-hides while the maneuver is
+         * far; mode 0 keeps the card permanently visible (stock behaviour). */
+        {
             int hidden = (g_card_mode == 2)
-                || (g_card_mode == 1 && progress_level >= CARD_AUTO_FAR_LEVEL);
+                || (g_card_mode == 1 && g_last_progress_level >= CARD_AUTO_FAR_LEVEL);
             if (hidden != g_card_hidden) {
                 g_card_hidden = hidden;
                 maneuver_set_slide(hidden ? 0.0f : 1.0f);
                 g_engine.dirty = 1;
                 fprintf(stderr, "engine: card %s (mode=%d level=%d)\n",
-                        hidden ? "hidden" : "shown", g_card_mode, progress_level);
+                        hidden ? "hidden" : "shown", g_card_mode, g_last_progress_level);
             }
         }
         if(cr_progress_tick(&g_arrow,progress_now)) g_engine.dirty=1;

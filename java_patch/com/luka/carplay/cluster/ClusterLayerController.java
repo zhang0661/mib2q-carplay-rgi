@@ -23,6 +23,7 @@
  */
 package com.luka.carplay.cluster;
 
+import com.luka.carplay.connectivity.CarPlaySettingsUi;
 import com.luka.carplay.framework.Log;
 import de.audi.tghu.fwhmi.IDisplayManagerKombiControl;
 import de.esolutions.hmi.widgets.audi.base.Layout;
@@ -324,10 +325,15 @@ public final class ClusterLayerController {
             int dy = popup ? geometry.popupY : geometry.inTubeY;
             int backing = popup ? BACKING_POPUP : BACKING_SPORT;
             int otherBacking = popup ? BACKING_SPORT : BACKING_POPUP;
+            /* Backing follows the same stage rule as the plate: translucent
+             * plate (full-map stage + card_alpha < 100) -> backing transparent,
+             * otherwise stock backing stays on. */
+            int backingOpacity =
+                (CarPlaySettingsUi.getCardAlpha() < 100 && popup) ? 0 : carplayOpacity;
             dm.setCropping(MANEUVER, terminal, cx, cy, cw, ch, dx, dy, cw, ch);
             dm.setOpacity(MANEUVER, terminal, carplayOpacity);
             dm.setPosition(backing, terminal, dx, dy);
-            dm.setOpacity(backing, terminal, carplayOpacity);
+            dm.setOpacity(backing, terminal, backingOpacity);
             dm.setOpacity(otherBacking, terminal, 0);
             errorLogged = false;
         } catch (Throwable t) {
@@ -367,6 +373,9 @@ public final class ClusterLayerController {
             if (line.equals(lastAppliedSignature)) return;
             lastAppliedSignature = line;
         }
+        /* Stage flip: Sport = fully opaque plate, full map = follow the
+         * user's transparency setting.  Idempotent inside. */
+        CarPlaySettingsUi.onClusterStageChanged(popup);
         Log.i("ClusterLayers", line);
     }
 

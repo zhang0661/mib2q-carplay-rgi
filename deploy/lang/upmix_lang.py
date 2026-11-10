@@ -89,6 +89,14 @@ SURROUND_EXTRAS = {
 # 32: TEXT_RGI_VC_AUTO          (2501532)
 # 33: TEXT_RGI_VC_HINT          (2501533)
 # 34: TEXT_RGI_VC_HIDDEN        (2501534)
+# 35: TEXT_UPDATE               (2501535)
+# 36: TEXT_UPDATE_CHECK         (2501536)
+# 37: TEXT_UPDATE_CONFIRM       (2501537)
+# 38: TEXT_UPDATE_CANCEL        (2501538)
+# 39: TEXT_UPDATE_RUNNING       (2501539)
+# 40: TEXT_UPDATE_DONE          (2501540)
+# 41: TEXT_UPDATE_FAILED        (2501541)
+# 42: TEXT_UPDATE_HINT          (2501542)
 CM_TEXTS = {
     "en": [
         "CarPlay settings",
@@ -126,6 +134,14 @@ CM_TEXTS = {
         "Auto-hide when far",
         "Hide the cockpit turn card while the next maneuver is far away and show it on approach",
         "Hidden",
+        "Update from SD card",
+        "Check SD card",
+        "Confirm update",
+        "Cancel",
+        "Updating...",
+        "Update complete, please reboot",
+        "Update failed",
+        "Check the card, then confirm to run the installer on the SD card",
     ],
     "de": [
         "CarPlay-Einstellungen",
@@ -450,6 +466,24 @@ CM_TEXTS = {
         "\u59cb\u7ec8\u663e\u793a\u4e0b\u4e00\u8f6c\u5411",
         "\u8ddd\u79bb\u8f83\u8fdc\u65f6\u663e\u793a\u76f4\u884c",
         "\u63d0\u524d\u663e\u793a\u4e0b\u4e00\u8f6c\u5411\uff0c\u6216\u5728\u63a5\u8fd1\u8def\u53e3\u524d\u663e\u793a\u76f4\u884c\u7bad\u5934",
+        "\u8f6c\u5411\u5361\u7247\u80cc\u666f",
+        "\u9a7e\u9a76\u8231\u8f6c\u5411\u5361\u7247\u80cc\u666f\u7684\u4e0d\u900f\u660e\u5ea6",
+        "30 %",
+        "50 %",
+        "100 %",
+        "\u9a7e\u9a76\u8231\u8f6c\u5411\u5361\u7247",
+        "\u59cb\u7ec8\u663e\u793a",
+        "\u8ddd\u79bb\u8fdc\u65f6\u81ea\u52a8\u9690\u85cf",
+        "\u9690\u85cf",
+        "\u8fdc\u79bb\u4e0b\u4e00\u4e2a\u8f6c\u5411\u65f6\u9690\u85cf\u9a7e\u9a76\u8231\u8f6c\u5411\u5361\u7247\uff0c\u63a5\u8fd1\u65f6\u663e\u793a",
+        "\u4ece SD \u5361\u66f4\u65b0",
+        "\u68c0\u67e5 SD \u5361",
+        "\u786e\u8ba4\u6267\u884c",
+        "\u53d6\u6d88",
+        "\u66f4\u65b0\u4e2d\u2026",
+        "\u66f4\u65b0\u5b8c\u6210\uff0c\u8bf7\u91cd\u542f",
+        "\u66f4\u65b0\u5931\u8d25",
+        "\u68c0\u67e5 SD \u5361\u540e\uff0c\u786e\u8ba4\u5373\u53ef\u8fd0\u884c\u5361\u4e0a\u7684\u5b89\u88c5\u7a0b\u5e8f",
     ],
     "zh_HK": [
         "CarPlay \u8a2d\u5b9a",

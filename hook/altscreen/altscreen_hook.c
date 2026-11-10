@@ -686,43 +686,6 @@ static int main_disp_modernize(void *mainDisp, int night)
                      (long long)v[0], (long long)v[1], (long long)v[2], (long long)v[3]);
         }
     }
-    /* Optional main-screen resolution override (both or neither):
-     * CARPLAY_MAIN_W / CARPLAY_MAIN_H.  iOS renders the main CarPlay UI
-     * (stream 110) at the size this dict advertises, so this is the one place
-     * the HU decides the main resolution.  Unset or malformed = stock values,
-     * exactly as logged above.  The physical pair is scaled by the same factor
-     * only when the stock pair is non-zero, so the density iOS derives stays
-     * truthful; a zero stock pair is left alone.  The stock touch path emits
-     * absolute coordinates in the STOCK display space, so a non-stock size
-     * also rescales where touches land - test both together, never ship one
-     * without the other.  See docs/altscreen-and-video/MAIN_SCREEN_RESOLUTION.md. */
-    {
-        const char *ew = getenv("CARPLAY_MAIN_W");
-        const char *eh = getenv("CARPLAY_MAIN_H");
-        long w = ew ? strtol(ew, 0, 10) : 0;
-        long h = eh ? strtol(eh, 0, 10) : 0;
-        if (w >= 320 && w <= 4096 && h >= 240 && h <= 4096) {
-            int64_t sw = 0, sh = 0, pw = 0, ph = 0;
-            void *k = cf_str(0, "widthPixels", CFENC_UTF8);
-            if (k) { sw = cf_geti64(mainDisp, k, NULL); if (cf_rel) cf_rel(k); }
-            k = cf_str(0, "heightPixels", CFENC_UTF8);
-            if (k) { sh = cf_geti64(mainDisp, k, NULL); if (cf_rel) cf_rel(k); }
-            set_i64(mainDisp, "widthPixels", w);
-            set_i64(mainDisp, "heightPixels", h);
-            if (sw > 0 && sh > 0) {
-                double fx = (double)w / (double)sw, fy = (double)h / (double)sh;
-                k = cf_str(0, "widthPhysical", CFENC_UTF8);
-                if (k) { pw = cf_geti64(mainDisp, k, NULL); if (cf_rel) cf_rel(k); }
-                k = cf_str(0, "heightPhysical", CFENC_UTF8);
-                if (k) { ph = cf_geti64(mainDisp, k, NULL); if (cf_rel) cf_rel(k); }
-                if (pw > 0) set_i64(mainDisp, "widthPhysical",  (int64_t)((double)pw * fx + 0.5));
-                if (ph > 0) set_i64(mainDisp, "heightPhysical", (int64_t)((double)ph * fy + 0.5));
-            }
-            LOG_INFO(LOG_MODULE,
-                     "main display: resolution override stock %lldx%lld -> %ldx%ld px, physical %lldx%lld mm (scaled)",
-                     (long long)sw, (long long)sh, w, h, (long long)pw, (long long)ph);
-        }
-    }
     /* Native MMI touchpad.  Stock dio registers the HID trackpad ("Eso_TrackPad") but builds
      * "features" from the knob and touchscreen flags only, never bit 0x10, and sends no
      * primaryInputDevice.  iOS then picks CarPlay knob focus mode, which has no swipe
@@ -3076,7 +3039,41 @@ static void altscreen_init(void)
     bus_on(CMD_ALT_ZOOM, zoom_on_cmd, NULL);
     bus_on(CMD_ALT_ZONE, zone_on_cmd, NULL);
     bus_on(CMD_ALT_RGI, rgi_on_cmd, NULL);
+/* MMI "从 SD 卡更新": run the installer in a child process, log to
+ * /tmp/carplay_update.log.  Java polls the log for DONE/FAILED. */
+static void update_on_cmd(uint16_t type, uint8_t flags, const uint8_t *payload, uint32_t len, void *ctx)
+{
+    static const char *sd_candidates[] = {
+        "/mnt/sdcard10t12/mod/custom.sh",
+        "/mnt/sdcard/mod/custom.sh",
+        "/fs/sdcard0/mod/custom.sh",
+        0
+    };
+    const char *script = 0;
+    int i;
+    (void)type; (void)flags; (void)ctx;
+    if (!payload || len < 1 || payload[0] != 1) return;
+    for (i = 0; sd_candidates[i]; i++) {
+        FILE *f = fopen(sd_candidates[i], "r");
+        if (f) { fclose(f); script = sd_candidates[i]; break; }
+    }
+    if (!script) {
+        FILE *f = fopen("/tmp/carplay_update.log", "w");
+        if (f) { fputs("FAILED: no /mod/custom.sh on the SD card\n", f); fclose(f); }
+        LOG_WARN(LOG_MODULE, "update: no install script on the SD card");
+        return;
+    }
+    LOG_WARN(LOG_MODULE, "update: executing %s install", script);
+    if (fork() == 0) {
+        FILE *f = fopen("/tmp/carplay_update.log", "w");
+        if (f) { dup2(fileno(f), 1); dup2(fileno(f), 2); fclose(f); }
+        execl("/bin/sh", "sh", script, "install", (char *)0);
+        _exit(127);
+    }
+}
+
     bus_on(CMD_ALT_CFG, cfg_on_cmd, NULL);
+    bus_on(CMD_UPDATE, update_on_cmd, NULL);
     LOG_INFO(LOG_MODULE, "AltScreen injector loaded (control negotiation + self-contained stream 111; cluster ZOOM/ZONE/RGI registered; NIGHT mirrored from stock /info + SetNightMode)");
 }
 

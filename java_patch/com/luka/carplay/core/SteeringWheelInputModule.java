@@ -24,6 +24,10 @@ import de.audi.app.terminalmode.keyevents.KeyState;
 import de.audi.atip.mmicombi.IMMICombiScreenChangeManager;
 import de.audi.atip.mmicombi.exchange.MMICombiDisplayStatus;
 
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+
 import org.dsi.ifc.keypanel.DSIKeyPanel;
 import org.dsi.ifc.keypanel.DSIKeyPanelListener;
 import org.osgi.framework.ServiceRegistration;
@@ -202,6 +206,44 @@ public final class SteeringWheelInputModule implements Module {
         return true;
     }
 
+    /* Write the key event line and a copy of the Java log straight to the SD
+     * card (logs_export/), so a key press is diagnostic without telnet and
+     * without the export script.  Best effort: every failure is silent. */
+    private static final String[] SD_MOUNTS =
+        { "/mnt/sdcard10t12", "/mnt/sdcard", "/fs/sdcard0" };
+
+    private static void writeSdKeyLog(String line) {
+        for (int i = 0; i < SD_MOUNTS.length; i++) {
+            File base = new File(SD_MOUNTS[i]);
+            if (!base.isDirectory()) continue;
+            try {
+                File dir = new File(base, "logs_export");
+                if (!dir.exists()) dir.mkdir();
+                FileOutputStream out =
+                    new FileOutputStream(new File(dir, "star_key.log"), true);
+                out.write(line.getBytes("UTF-8"));
+                out.write('\n');
+                out.close();
+                copyJavaLogToSd(dir);
+                return;
+            } catch (Throwable t) { /* try the next mount */ }
+        }
+    }
+
+    private static void copyJavaLogToSd(File dir) {
+        try {
+            File src = new File("/tmp/carplay_java.log");
+            if (!src.isFile()) return;
+            FileInputStream in = new FileInputStream(src);
+            FileOutputStream out = new FileOutputStream(new File(dir, "carplay_java.log"));
+            byte[] buf = new byte[4096];
+            int n;
+            while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+            in.close();
+            out.close();
+        } catch (Throwable t) { /* best effort */ }
+    }
+
     private boolean isConfirmedMapTab() {
         if (!running) return false;
         IMMICombiScreenChangeManager manager = combiManager;
@@ -229,12 +271,15 @@ public final class SteeringWheelInputModule implements Module {
             }
             if (keyCode == KEY_MFW_STAR) {
                 if (keyState != KST_PRESSED) return;
-                Log.i(TAG, "MFW star pressed -> cycling cockpit turn-card state");
+                Log.w(TAG, "MFW star pressed -> cycling cockpit turn-card state");
+                writeSdKeyLog(System.currentTimeMillis() + " MFW star pressed key=" + keyCode);
                 CarPlaySettingsUi.cycleCardState();
                 return;
             }
             if (keyState == KST_PRESSED && logUnknownKey(keyCode)) {
-                Log.i(TAG, "unhandled MFW key code=" + keyCode);
+                Log.w(TAG, "unhandled MFW key code=" + keyCode);
+                writeSdKeyLog(System.currentTimeMillis()
+                    + " unhandled MFW key code=" + keyCode);
             }
             if (keyCode != KEY_MFW_ROLLER_LEFT
                     || (keyboardId != KBD_MFW && keyboardId != KBD_MFW_3GP)
@@ -243,10 +288,13 @@ public final class SteeringWheelInputModule implements Module {
             armCollapsedSelect(keyState);
             if (keyState != KST_PRESSED) return;
 
-            boolean mapTab = isConfirmedMapTab();
-            Log.i(TAG, "MFW OK pressed board=" + keyboardId + " mapTab=" + mapTab);
-            if (!mapTab) return;
-            AltScreenModule.onSteeringWheelOkPressed();
+            /* Gate: CarPlay owns the cluster (no active-navigation requirement,
+             * the user may preset the card state while parked). */
+            if (!AltScreenModule.isConnected()) return;
+            Log.w(TAG, "MFW roller press -> cycling cockpit turn-card state");
+            writeSdKeyLog(System.currentTimeMillis() + " MFW roller press cycle");
+            CarPlaySettingsUi.cycleCardState();
+            return;
         }
 
         public void asyncException(int errorCode, String errorString, int requestType) { }

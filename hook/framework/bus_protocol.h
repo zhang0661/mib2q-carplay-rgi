@@ -130,6 +130,7 @@
                                         /* MMI "Spatial Audio" checkbox (boot  */
                                         /* value via /tmp/carplay_settings)    */
 #define CMD_ALT_CFG             0x011B  /* binary [u8 altscreen 0/1][u8 url_mode 0/1] */
+#define CMD_UPDATE              0x011C  /* binary [u8 1=run /mod/custom.sh install];   */
                                         /* [u8 layout 0=left 1=center 2=right] */
 /* NOTE: dispatchable inbound types must be < MAX_TYPES in bus.c (grown to      */
 /* cover this 0x11x block).                                                     */
