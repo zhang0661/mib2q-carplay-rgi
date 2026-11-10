@@ -30,6 +30,12 @@ int render_init(int fb_width, int fb_height);
 /* Begin frame -- clear screen. */
 void render_begin_frame(void);
 
+/* Card background plate: one flat full-frame quad drawn before the maneuver
+ * composite, behind the road/lane layers.  alpha 0 = nothing (today's
+ * transparent layer), 1 = fully covers the stock 987 KDK backing.
+ * Only the alpha is configurable; geometry and colour stay fixed. */
+void render_card_backdrop(float alpha);
+
 /* Draw a colored rectangle in NDC coordinates. */
 void render_rect(float x, float y, float w, float h,
                  float r, float g, float b, float a);

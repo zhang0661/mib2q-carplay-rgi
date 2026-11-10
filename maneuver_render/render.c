@@ -1551,6 +1551,48 @@ void render_sync_camera(void) {
     sync_camera_uniforms();
 }
 
+/* Card background plate.  Our cluster layer 98 has a transparent frame and sits
+ * on top of the stock 987 KDK backing (displayable 101/102), which the DM can
+ * only show at opacity 0 or 100 -- so the card background can only become
+ * translucent if we draw it ourselves.  One flat, untextured, full-frame quad
+ * before the maneuver composite does that; the DM's existing crop of layer 98
+ * keeps it inside the popup/in-tube area.
+ *
+ * Reuses the flat pass unchanged, so no new GL program is compiled and the
+ * program-binary cache (common/gl_program_cache.h) needs no version bump.
+ * Depth writes stay off so the plate cannot occlude the road composite. */
+void render_card_backdrop(float alpha) {
+    /* a_pos is a vec3: three floats per vertex, six vertices. */
+    static const float quad[] = {
+        -1, -1, 0,   1, -1, 0,   1,  1, 0,
+        -1, -1, 0,   1,  1, 0,  -1,  1, 0
+    };
+    float identity[16];
+
+    if (alpha <= 0.0f) return;
+
+    memset(identity, 0, sizeof(identity));
+    identity[0] = identity[5] = identity[10] = identity[15] = 1.0f;
+
+    glDisable(GL_DEPTH_TEST);
+    glDepthMask(GL_FALSE);
+    glEnable(GL_BLEND);
+    glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA,
+                        GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+    use_flat_program(3.0f);   /* flat colour; no texture, no entry fade */
+    glUniformMatrix4fv(g_flat_mvp, 1, GL_FALSE, identity);
+    glUniform1f(g_flat_zbias, 0.0f);
+    glUniform4f(g_flat_color, 0.0f, 0.0f, 0.0f, alpha);
+    glVertexAttribPointer(g_flat_attr_pos, 3, GL_FLOAT, GL_FALSE, 0, quad);
+    glEnableVertexAttribArray(g_flat_attr_pos);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+    glDisableVertexAttribArray(g_flat_attr_pos);
+
+    glDepthMask(GL_TRUE);
+    glEnable(GL_DEPTH_TEST);
+    use_lit_program();
+}
+
 void render_end_frame(void) {
     static const float quad[] = { -1,-1, 1,-1, 1,1, -1,-1, 1,1, -1,1 };
 

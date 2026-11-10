@@ -89,6 +89,35 @@ typedef struct {
 } cr_engine_t;
 
 static cr_engine_t g_engine;
+
+/* Card background transparency.  CarPlaySettingsUi writes card_alpha=<0..100>
+ * into /tmp/carplay_settings (the existing Java-to-C file), so the renderer needs
+ * no new bus command or protocol field: it re-reads the file once a second and
+ * only touches the dirty flag when the value changes.  A missing file, a missing
+ * line or an out-of-range value keeps the current value, so the renderer never
+ * fails on it. */
+#define CARD_SETTINGS_FILE "/tmp/carplay_settings"
+#define CARD_ALPHA_DEFAULT 100
+static int g_card_alpha = CARD_ALPHA_DEFAULT;
+
+static void read_card_alpha(void) {
+    FILE *f = fopen(CARD_SETTINGS_FILE, "r");
+    char line[128];
+    int value = g_card_alpha;
+    if (!f) return;
+    while (fgets(line, sizeof(line), f)) {
+        if (!strncmp(line, "card_alpha=", 11)) {
+            int parsed = atoi(line + 11);
+            if (parsed >= 0 && parsed <= 100) value = parsed;
+        }
+    }
+    fclose(f);
+    if (value == g_card_alpha) return;
+    g_card_alpha = value;
+    g_engine.dirty = 1;
+    fprintf(stderr, "engine: card_alpha=%d\n", g_card_alpha);
+}
+
 // Independent panel input. Never passed into route geometry or animation.
 static cr_lane_guidance_t g_lane_guidance;
 static cr_lane_decoder_t g_lane_decoder;
@@ -488,6 +517,7 @@ int main(int argc, char **argv) {
     }
     { extern float g_3d_offset_adjust;g_3d_offset_adjust=-.16f; }
     clear_maneuver();
+    read_card_alpha();   /* a stored value applies before the first frame */
 
     /* Connect to Java BAPBridge after EGL/GL init so display setup is never
      * delayed by a pending socket connect, and EVT_READY can be sent immediately. */
@@ -788,6 +818,7 @@ int main(int argc, char **argv) {
             render_set_route_progress(g_arrow.fill,g_arrow.path_weight,g_arrow.glow);
             watch_stage(WATCH_BEGIN_FRAME);
             render_begin_frame();
+            render_card_backdrop((float)g_card_alpha / (float)CARD_ALPHA_DEFAULT);
             watch_stage(WATCH_SCENE_DRAW);
             maneuver_draw(&g_engine.current, next_ptr);
             cr_rect_t panel_visible;
@@ -943,6 +974,7 @@ int main(int argc, char **argv) {
                 hb_last = t_start;
                 watch_stage(WATCH_HEARTBEAT);
                 cr_server_send_heartbeat();
+                read_card_alpha();
                 watch_stage(WATCH_IDLE);
             }
         }

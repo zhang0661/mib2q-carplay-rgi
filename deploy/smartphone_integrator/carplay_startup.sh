@@ -63,6 +63,14 @@ export LD_PRELOAD="$H/libcarplay_hook.so"
 export ALTSCREEN_HANDLE_ALT=1
 export ALTSCREEN_ADVERT_DISPLAYS=1
 
+# Optional main-screen CarPlay resolution override (both or neither).  iOS renders
+# the main CarPlay UI at the size the /info display dict advertises; the hook applies
+# these when set (hook/altscreen/altscreen_hook.c, main_disp_modernize).  Leave unset
+# for stock.  CAUTION: stock touch coordinates live in the stock display space, so a
+# non-stock size also rescales where touches land - test both together.
+export CARPLAY_MAIN_W=1560
+export CARPLAY_MAIN_H=700
+
 # Video decode feed tuning (hook module "decoder_optimize"; reversed facts in
 # dio_asm_to_c/_legacy_attempt/libairplay-mhi2q/reversed/04_video_decoder_optimization.md).
 # The hook automatically reduces the decode-feed and present queues from 4 to 2

@@ -79,6 +79,13 @@ SURROUND_EXTRAS = {
 # 22: TEXT_RGI_FAR_NEXT         (2501522)
 # 23: TEXT_RGI_FAR_STRAIGHT     (2501523)
 # 24: TEXT_RGI_FAR_HINT         (2501524)
+# 25: TEXT_CARD_ALPHA           (2501525)
+# 26: TEXT_CARD_ALPHA_HINT      (2501526)
+# 27: TEXT_CARD_ALPHA_100       (2501527)
+# 28: TEXT_CARD_ALPHA_75        (2501528)
+# 29: TEXT_CARD_ALPHA_50        (2501529)
+# 30: TEXT_CARD_ALPHA_25        (2501530)
+# 31: TEXT_CARD_ALPHA_0         (2501531)
 CM_TEXTS = {
     "en": [
         "CarPlay settings",
@@ -106,6 +113,13 @@ CM_TEXTS = {
         "Always next maneuver",
         "Follow road when far",
         "Show the next turn in advance, or a straight arrow until you get closer",
+        "Turn Card Background",
+        "Opacity of the cockpit turn-card background",
+        "100 %",
+        "75 %",
+        "50 %",
+        "25 %",
+        "Off",
     ],
     "de": [
         "CarPlay-Einstellungen",

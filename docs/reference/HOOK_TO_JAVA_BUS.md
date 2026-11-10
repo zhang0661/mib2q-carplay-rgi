@@ -85,7 +85,7 @@ valid queued state. See [Input commands](../altscreen-and-video/ALTSCREEN_INPUT_
 
 **Vehicle data goes the other way.** `CMD_VEHICLE 0x0118` (Java → hook, binary, little-endian, 14 bytes) is `[u8 version 1][u8 valid bits: speed, gear, range, temperature, warning][u16 speed cm/s][u8 gear 0 unknown / 1 D / 2 R / 3 N / 4 P][u16 range km][i16 outside temperature 0.1 °C][u8 range warning][u32 Java ms]`, sent every 200 ms by `VehicleDataModule`; `hook/vehicle` turns it into `$PASCD` and VehicleStatusUpdate. See [Vehicle Data To Phone](../connect-and-usb/VEHICLE_DATA_TO_PHONE.md). **[code]**
 
-**CarPlay settings are persisted by Java.** `CarPlaySettingsUi` uses `IStorageAccess`, namespace `1009`, and writes `/tmp/carplay_settings` at HMI start and after changes. The current production serializer writes all seven fields below; its two-argument overload retains the older audio-only format for compatibility/tests.
+**CarPlay settings are persisted by Java.** `CarPlaySettingsUi` uses `IStorageAccess`, namespace `1009`, and writes `/tmp/carplay_settings` at HMI start and after changes. The current production serializer writes all eight fields below; its two-argument overload retains the older audio-only format for compatibility/tests.
 
 | Key | Persisted field | Values / delivery |
 | --- | --- | --- |
@@ -96,6 +96,8 @@ valid queued state. See [Input commands](../altscreen-and-video/ALTSCREEN_INPUT_
 | 1004 | `alt_layout` | 0 Left, 1 Center, 2 Right; third byte |
 | 1005 | `rgi` | 0 Off, 1 On; Java route-guidance policy |
 | 1006 | `rgi_far` | 0 Always next turn, 1 Straight arrow when far; Java route-guidance policy |
+| 1007 | - | reserved for `KEY_RGI_VC` (Cockpit Turn Card); documented in `CarPlaySettingsUi`, not implemented yet |
+| 1008 | `card_alpha` | 0..100 percent of the cockpit turn-card plate, 100 = unchanged; read by `maneuver_render`, no bus command |
 
 `CMD_ALT_CFG 0x011B` is **three bytes**: `[enable, url_mode, layout]`; the native handler rejects payloads shorter than three bytes. RGI policy also invokes Java module callbacks; do not invent a separate native command for it. `spa_settings_reload()` restores audio boot values, while AltScreen reads its own fields. See [current audio controls](../audio/STEREO_TO_5_1_UPMIX.md#mmi-level), [CarPlaySettingsUi.java](../../java_patch/com/luka/carplay/connectivity/CarPlaySettingsUi.java) and `cfg_on_cmd` in [altscreen_hook.c](../../hook/altscreen/altscreen_hook.c). **[code]**
 
