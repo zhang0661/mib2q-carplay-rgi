@@ -17,6 +17,7 @@
  */
 package com.luka.carplay.core;
 
+import com.luka.carplay.connectivity.CarPlaySettingsUi;
 import com.luka.carplay.framework.Log;
 
 import de.audi.app.terminalmode.keyevents.KeyState;
@@ -35,6 +36,9 @@ public final class SteeringWheelInputModule implements Module {
     private static final int KBD_MFW_3GP = 8;
     private static final int KEY_DDS = 16;
     private static final int KEY_MFW_ROLLER_LEFT = 40;
+    /* MFW star key candidate.  If the on-car log never shows "MFW star pressed",
+     * the real code appears once as "unhandled MFW key code=N" - update this. */
+    private static final int KEY_MFW_STAR = 41;
     private static final int KST_RELEASED = 0;
     private static final int KST_PRESSED = 1;
     private static final int ATTR_VALID = 1;
@@ -187,6 +191,17 @@ public final class SteeringWheelInputModule implements Module {
         }
     }
 
+    /* One log per distinct unknown MFW key code (star-key discovery). */
+    private static int loggedUnknownKeys;
+
+    private static boolean logUnknownKey(int code) {
+        if (code < 0 || code > 31) return false;
+        int bit = 1 << code;
+        if ((loggedUnknownKeys & bit) != 0) return false;
+        loggedUnknownKeys |= bit;
+        return true;
+    }
+
     private boolean isConfirmedMapTab() {
         if (!running) return false;
         IMMICombiScreenChangeManager manager = combiManager;
@@ -211,6 +226,15 @@ public final class SteeringWheelInputModule implements Module {
             if (keyCode == KEY_DDS) {
                 clearCollapsedSelect(keyState);
                 return;
+            }
+            if (keyCode == KEY_MFW_STAR) {
+                if (keyState != KST_PRESSED) return;
+                Log.i(TAG, "MFW star pressed -> cycling cockpit turn-card state");
+                CarPlaySettingsUi.cycleCardState();
+                return;
+            }
+            if (keyState == KST_PRESSED && logUnknownKey(keyCode)) {
+                Log.i(TAG, "unhandled MFW key code=" + keyCode);
             }
             if (keyCode != KEY_MFW_ROLLER_LEFT
                     || (keyboardId != KBD_MFW && keyboardId != KBD_MFW_3GP)
