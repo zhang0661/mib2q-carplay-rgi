@@ -22,6 +22,7 @@
 package com.luka.carplay.connectivity;
 
 import com.luka.carplay.bus.CarplayBus;
+import com.luka.carplay.cluster.ClusterLayerController;
 import com.luka.carplay.core.AltScreenModule;
 import com.luka.carplay.framework.Log;
 import com.luka.carplay.rgd.RouteGuidance;
@@ -56,8 +57,12 @@ import de.esolutions.hmi.widgets.audi.evo.widgets.menu.InfolineTimerController;
 import de.esolutions.hmi.widgets.audi.evo.widgets.menu.MenuController;
 import de.esolutions.hmi.widgets.audi.evo.widgets.menu.MenuItemController;
 import de.esolutions.hmi.widgets.audi.evo.widgets.menu.MultiLineMenuItemController;
+import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.util.List;
+import java.util.Timer;
+import java.util.TimerTask;
 
 public final class CarPlaySettingsUi {
     private static final String TAG = "CarPlaySettings";
@@ -71,6 +76,7 @@ public final class CarPlaySettingsUi {
     private static final int KEY_RGI_FAR     = 1006;
     private static final int KEY_RGI_VC      = 1007;
     private static final int KEY_CARD_ALPHA  = 1008;
+    private static final int KEY_CARD_CYCLE  = 1009;   /* star/roller cycle position 0..4 */
 
     public static final int LEVEL_OFF = 0;
     public static final int LEVEL_NORMAL = 1;
@@ -126,6 +132,7 @@ public final class CarPlaySettingsUi {
     public static final int MODEL_RGI_FAR     = 2500506;       // module 25, index 506
     public static final int MODEL_CARD_ALPHA  = 2500507;       // module 25, index 507
     public static final int MODEL_RGI_VC      = 2500508;       // module 25, index 508
+    public static final int MODEL_UPDATE      = 2500509;       // module 25, index 509
 
     private static final int INDEX_SPATIAL     = MODEL_SPATIAL % 100000;
     private static final int INDEX_UPMIX       = MODEL_UPMIX % 100000;
@@ -136,6 +143,7 @@ public final class CarPlaySettingsUi {
     private static final int INDEX_RGI_FAR     = MODEL_RGI_FAR % 100000;
     private static final int INDEX_CARD_ALPHA  = MODEL_CARD_ALPHA % 100000;
     private static final int INDEX_RGI_VC      = MODEL_RGI_VC % 100000;
+    private static final int INDEX_UPDATE      = MODEL_UPDATE % 100000;
 
     private static final int DRAWER_CM_OPT        = 2500001;
     private static final int SCREEN_ABOUT_CARPLAY = 2500140;
@@ -152,6 +160,7 @@ public final class CarPlaySettingsUi {
     private static final int INTERNAL_ID_RGI_FAR     = 2509916;
     private static final int INTERNAL_ID_CARD_ALPHA  = 2509917;
     private static final int INTERNAL_ID_RGI_VC      = 2509918;
+    private static final int INTERNAL_ID_UPDATE      = 2509919;
 
     // HMIConnectivityEvoHigh string table slots 1500..1529 (text ids 2501500..2501529)
     public static final int TEXT_TITLE                  = 2501500;
@@ -189,6 +198,14 @@ public final class CarPlaySettingsUi {
     public static final int TEXT_RGI_VC_AUTO           = 2501532;
     public static final int TEXT_RGI_VC_HINT           = 2501533;
     public static final int TEXT_RGI_VC_HIDDEN         = 2501534;
+    public static final int TEXT_UPDATE                = 2501535;
+    public static final int TEXT_UPDATE_CHECK          = 2501536;
+    public static final int TEXT_UPDATE_CONFIRM        = 2501537;
+    public static final int TEXT_UPDATE_CANCEL         = 2501538;
+    public static final int TEXT_UPDATE_RUNNING        = 2501539;
+    public static final int TEXT_UPDATE_DONE           = 2501540;
+    public static final int TEXT_UPDATE_FAILED         = 2501541;
+    public static final int TEXT_UPDATE_HINT           = 2501542;
 
     private static final String[] FALLBACK_TEXTS = new String[]{
         "CarPlay settings",
@@ -225,7 +242,15 @@ public final class CarPlaySettingsUi {
         "Always visible",
         "Auto-hide when far",
         "Hidden",
-        "Hide the cockpit turn card while the next maneuver is far away and show it on approach"
+        "Hide the cockpit turn card while the next maneuver is far away and show it on approach",
+        "Update from SD card",
+        "Check SD card",
+        "Confirm update",
+        "Cancel",
+        "Updating...",
+        "Update complete, please reboot",
+        "Update failed",
+        "Check the card, then confirm to run the installer on the SD card"
     };
 
     private static final int[] SUBMENU_BITMAPS = new int[]{39, 39, 39, 39};
@@ -242,6 +267,7 @@ public final class CarPlaySettingsUi {
     private static volatile ChoiceModel rgiFarModel;
     private static volatile ChoiceModel cardAlphaModel;
     private static volatile ChoiceModel rgiVcModel;
+    private static volatile ChoiceModel updateModel;
 
     private static volatile MenuItemController spatialMenuItem;
     private static volatile MenuItemController upmixMenuItem;
@@ -250,6 +276,7 @@ public final class CarPlaySettingsUi {
     private static volatile MenuItemController rgiFarMenuItem;
     private static volatile MenuItemController cardAlphaMenuItem;
     private static volatile MenuItemController rgiVcMenuItem;
+    private static volatile MenuItemController updateMenuItem;
 
     private static volatile int pendingSpatial    = SPATIAL_DEFAULT;
     private static volatile int pendingUpmixChoice = CHOICE_NORMAL;
@@ -270,6 +297,10 @@ public final class CarPlaySettingsUi {
     private static volatile int currentRgiFar     = RGI_FAR_DEFAULT;
     private static volatile int currentCardAlpha  = CARD_ALPHA_DEFAULT;
     private static volatile int currentRgiVc      = RGI_VC_DEFAULT;
+    /* Cluster stage (measured on the car): popup=true is the FULL-MAP stage,
+     * popup=false is the SPORT stage.  Sport forces the plate fully opaque;
+     * full map follows the user's transparency setting. */
+    private static volatile boolean currentStagePopup;
 
     private CarPlaySettingsUi() {}
 
@@ -341,6 +372,7 @@ public final class CarPlaySettingsUi {
                 FlushValuesDict.register(NAMESPACE, KEY_RGI_FAR);
                 FlushValuesDict.register(NAMESPACE, KEY_CARD_ALPHA);
                 FlushValuesDict.register(NAMESPACE, KEY_RGI_VC);
+                FlushValuesDict.register(NAMESPACE, KEY_CARD_CYCLE);
             } catch (Throwable t) {
                 Log.w(TAG, "flush key not registered: " + t);
             }
@@ -429,6 +461,7 @@ public final class CarPlaySettingsUi {
         currentAltUrl = mode;
         storeKey(KEY_ALT_URL, mode);
         writeSettingsFile();
+        try { showAltUrl(mode); } catch (Throwable t) { /* mirror only */ }
         boolean sent = sendAltConfigToHook();
         Log.i(TAG, "selected alt_url " + mode + (sent ? "" : " (bus down)"));
     }
@@ -439,6 +472,7 @@ public final class CarPlaySettingsUi {
         currentAltLayout = layout;
         storeKey(KEY_ALT_LAYOUT, layout);
         writeSettingsFile();
+        try { showAltLayout(layout); } catch (Throwable t) { /* mirror only */ }
         boolean sent = sendAltConfigToHook();
         Log.i(TAG, "selected alt_layout " + layout + (sent ? "" : " (bus down)"));
     }
@@ -449,6 +483,7 @@ public final class CarPlaySettingsUi {
         currentRgiEnabled = enable;
         storeKey(KEY_RGI_ENABLED, enable);
         writeSettingsFile();
+        try { showRgiEnabled(enable); } catch (Throwable t) { /* mirror only */ }
         syncMenuEnabledStates();
         RouteGuidance.onRgiSettingsChanged();
         AltScreenModule.onSettingsChanged();
@@ -474,9 +509,13 @@ public final class CarPlaySettingsUi {
         currentCardAlpha = snapped;
         storeKey(KEY_CARD_ALPHA, snapped);
         writeSettingsFile();
+        try { showCardAlpha(snapped); } catch (Throwable t) { /* mirror only */ }
         /* The renderer re-reads /tmp/carplay_settings once a second, so the new
          * plate opacity appears without a renderer restart and without a bus
-         * command; there is nothing else to notify here. */
+         * command; there is nothing else to notify here.  The KDK backing
+         * opacity, however, is applied by ClusterLayerController: reapply so the
+         * backing goes transparent together with the plate. */
+        try { ClusterLayerController.reapply(); } catch (Throwable t) { /* UI-only */ }
         Log.i(TAG, "selected card_alpha " + snapped);
     }
 
@@ -497,31 +536,60 @@ public final class CarPlaySettingsUi {
         currentRgiVc = mode;
         storeKey(KEY_RGI_VC, mode);
         writeSettingsFile();
+        try { showRgiVc(mode); } catch (Throwable t) { /* mirror only */ }
         /* The renderer re-reads /tmp/carplay_settings once per second: no restart,
          * no bus command. */
         Log.i(TAG, "selected rgi_vc " + mode);
     }
 
-    /** Star-key entry: 显示 -> 隐藏 -> 位置左 -> 位置中 -> 位置右 -> 显示. */
+    /** Star/roller cycle entry: an explicit 5-position counter persisted as
+     *  KEY_CARD_CYCLE.  Rule the user drives with: while Route Guidance is
+     *  CHECKED the map turn cards never show; unchecked they show.  The cycle
+     *  flips the checkbox itself:
+     *    0 显示: checked + guidance card visible (map cards hidden)
+     *    1 全空: checked + guidance card hidden (map cards hidden too)
+     *    2/3/4: unchecked + map-card position left/center/right
+     *    -> back to 0. */
+    private static volatile int cyclePos = -1;   /* -1 = not read yet */
+
+    private static int readCyclePos() {
+        int v = readBounded(KEY_CARD_CYCLE, 0, 0, 4);
+        cyclePos = v;
+        return v;
+    }
+
     public static void cycleCardState() {
-        int next;
-        if (currentRgiVc == RGI_VC_HIDDEN) {
-            next = 2;                       /* hidden -> position left */
-        } else {
-            switch (currentAltLayout) {
-                case ALT_LAYOUT_LEFT:   next = 3; break;   /* left   -> center */
-                case ALT_LAYOUT_CENTER: next = 4; break;   /* center -> right  */
-                case ALT_LAYOUT_RIGHT:  next = 0; break;   /* right  -> show   */
-                default:                next = 1; break;   /* show   -> hide   */
-            }
-        }
-        Log.i(TAG, "star cycle -> state " + next);
-        switch (next) {
-            case 0: selectRgiVc(RGI_VC_ALWAYS); break;
-            case 1: selectRgiVc(RGI_VC_HIDDEN); break;
-            case 2: selectRgiVc(RGI_VC_ALWAYS); selectAltLayout(ALT_LAYOUT_LEFT); break;
-            case 3: selectRgiVc(RGI_VC_ALWAYS); selectAltLayout(ALT_LAYOUT_CENTER); break;
-            case 4: selectRgiVc(RGI_VC_ALWAYS); selectAltLayout(ALT_LAYOUT_RIGHT); break;
+        int pos = (cyclePos < 0) ? readCyclePos() : cyclePos;
+        pos = (pos + 1) % 5;
+        cyclePos = pos;
+        storeKey(KEY_CARD_CYCLE, pos);
+        Log.w(TAG, "star cycle -> state " + pos);
+        switch (pos) {
+            case 0:  /* 显示：勾选路线引导，引导卡显示，左中右隐藏 */
+                selectRgiEnabled(RGI_ENABLED_ON);
+                selectRgiVc(RGI_VC_ALWAYS);
+                /* Reset the map-card policy: an older cycle persisted
+                 * "Always show" (alt_url=1), which keeps the map cards visible
+                 * even during guidance - the user's rule is checked = never. */
+                selectAltUrl(ALT_URL_MAP_WHEN_RGI);
+                break;
+            case 1:  /* 全空：保持勾选，引导卡隐藏（左中右因勾选永隐） */
+                selectRgiEnabled(RGI_ENABLED_ON);
+                selectRgiVc(RGI_VC_HIDDEN);
+                selectAltUrl(ALT_URL_MAP_WHEN_RGI);
+                break;
+            case 2:  /* 左 */
+                selectRgiEnabled(RGI_ENABLED_OFF);
+                selectAltLayout(ALT_LAYOUT_LEFT);
+                break;
+            case 3:  /* 中 */
+                selectRgiEnabled(RGI_ENABLED_OFF);
+                selectAltLayout(ALT_LAYOUT_CENTER);
+                break;
+            case 4:  /* 右 */
+                selectRgiEnabled(RGI_ENABLED_OFF);
+                selectAltLayout(ALT_LAYOUT_RIGHT);
+                break;
             default: break;
         }
     }
@@ -531,10 +599,99 @@ public final class CarPlaySettingsUi {
         return currentRgiVc;
     }
 
+    /** Cluster stage flip (from ClusterLayerController.applyNow).  Measured
+     *  mapping: popup=true = full-map stage -> follow the setting; popup=false
+     *  = Sport stage -> fully opaque (transparency 0).  Rewrites the settings
+     *  file so the renderer picks the value up within a second. */
+    public static void onClusterStageChanged(boolean popup) {
+        if (currentStagePopup == popup) return;
+        currentStagePopup = popup;
+        writeSettingsFile();
+        Log.w(TAG, "cluster stage -> popup=" + popup
+            + " effective card_alpha=" + getEffectiveCardAlpha());
+    }
+
+    /** Effective plate opacity written to the settings file. */
+    public static int getEffectiveCardAlpha() {
+        return currentStagePopup ? currentCardAlpha : 100;
+    }
+
     /** The user picked a combo-box index (0=Always, 1=Auto-hide, 2=Hidden). */
     public static void selectRgiVcChoice(int choice) {
         selectRgiVc(choice >= RGI_VC_ALWAYS && choice <= RGI_VC_HIDDEN
             ? choice : RGI_VC_ALWAYS);
+    }
+
+    /* ---- "从 SD 卡更新" row: check / confirm / cancel + status values ------- */
+
+    private static final String[] UPDATE_SD_CANDIDATES =
+        { "/mnt/sdcard10t12", "/mnt/sdcard", "/fs/sdcard0" };
+    private static Timer updateTimer;
+
+    private static boolean sdHasUpdatePackage() {
+        for (int i = 0; i < UPDATE_SD_CANDIDATES.length; i++) {
+            if (new File(UPDATE_SD_CANDIDATES[i] + "/mod/custom.sh").isFile()) return true;
+        }
+        return false;
+    }
+
+    private static String readUpdateLog() {
+        try {
+            File f = new File("/tmp/carplay_update.log");
+            if (!f.isFile()) return "";
+            FileInputStream in = new FileInputStream(f);
+            byte[] buf = new byte[4096];
+            int n = in.read(buf);
+            in.close();
+            return n > 0 ? new String(buf, 0, n, "UTF-8") : "";
+        } catch (Throwable t) { return ""; }
+    }
+
+    private static void startUpdatePoll(final ChoiceModel m) {
+        if (updateTimer != null) updateTimer.cancel();
+        updateTimer = new Timer(true);
+        updateTimer.schedule(new TimerTask() {
+            public void run() {
+                String s = readUpdateLog();
+                try {
+                    if (s.indexOf("DONE (install)") >= 0) {
+                        m.setValue(4);
+                        updateTimer.cancel();
+                        Log.w(TAG, "update: DONE (reboot required)");
+                    } else if (s.indexOf("FAILED") >= 0) {
+                        m.setValue(5);
+                        updateTimer.cancel();
+                        Log.w(TAG, "update: FAILED");
+                    }
+                } catch (Throwable t) { /* HMI thread only for setValue */ }
+            }
+        }, 2000L, 2000L);
+    }
+
+    /** 0=检查 SD 卡, 1=确认执行, 2=取消 (3=更新中/4=完成/5=失败 are status-only). */
+    public static void selectUpdateChoice(int idx) {
+        Log.w(TAG, "update choice " + idx);
+        ChoiceModel m = updateModel;
+        switch (idx) {
+            case 0:  /* 检查 SD 卡 */
+                if (sdHasUpdatePackage()) {
+                    if (m != null) try { m.setValue(1); } catch (Throwable t) { }
+                    Log.w(TAG, "update: SD package found");
+                } else {
+                    if (m != null) try { m.setValue(2); } catch (Throwable t) { }
+                    Log.w(TAG, "update: no SD package");
+                }
+                break;
+            case 1:  /* 确认执行 */
+                boolean sent = CarplayBus.getInstance().sendBinary(
+                    CarplayBus.CMD_UPDATE, new byte[]{1});
+                if (m != null) try { m.setValue(3); } catch (Throwable t) { }
+                Log.w(TAG, "update: started" + (sent ? "" : " (bus down)"));
+                startUpdatePoll(m);
+                break;
+            case 2: default:  /* 取消 / 状态值：无操作 */
+                break;
+        }
     }
 
     static void syncMenuEnabledStates() {
@@ -655,7 +812,7 @@ public final class CarPlaySettingsUi {
             out = new FileOutputStream(SETTINGS_FILE);
             String content = formatSettings(currentSpatial, currentLevel, currentAltScreen,
                 currentAltUrl, currentAltLayout, currentRgiEnabled, currentRgiFar,
-                currentCardAlpha, currentRgiVc);
+                getEffectiveCardAlpha(), currentRgiVc);
             out.write(content.getBytes("UTF-8"));
         } catch (Throwable t) {
             Log.w(TAG, "cannot write " + SETTINGS_FILE + ": " + t);
@@ -772,11 +929,11 @@ public final class CarPlaySettingsUi {
         private static final int[] EXTRA_MODELS = new int[]{
             MODEL_SPATIAL, MODEL_UPMIX, MODEL_ALTSCREEN, MODEL_ALT_URL,
             MODEL_ALT_LAYOUT, MODEL_RGI_ENABLED, MODEL_RGI_FAR, MODEL_CARD_ALPHA,
-            MODEL_RGI_VC
+            MODEL_RGI_VC, MODEL_UPDATE
         };
 
         Bank() {
-            int need = INDEX_RGI_VC + 1;
+            int need = INDEX_UPDATE + 1;
             if (this.models.length < need) {
                 HMIModel[] grown = new HMIModel[need];
                 System.arraycopy(this.models, 0, grown, 0, this.models.length);
@@ -951,6 +1108,21 @@ public final class CarPlaySettingsUi {
                 rgiVcModel = m;
                 return;
             }
+            if (i == INDEX_UPDATE) {
+                if (this.models[i] != null) return;
+                final ChoiceModel m = new ChoiceModel(MODEL_UPDATE);
+                m.setChoiceListener(new DefaultChoiceListener() {
+                    public void itemSelected(int id, int value, int unused, int terminal) {
+                        try {
+                            selectUpdateChoice(value);
+                        } catch (Throwable t) { /* never into the HMI thread */ }
+                    }
+                });
+                m.setValue(2);   /* 取消 as the resting value */
+                this.models[i] = m;
+                updateModel = m;
+                return;
+            }
             super.createModel(i);
         }
     }
@@ -983,7 +1155,7 @@ public final class CarPlaySettingsUi {
 
         public String getText(int id) {
             String s = super.getText(id);
-            if ((s == null || s.length() == 0) && id >= TEXT_TITLE && id <= TEXT_RGI_VC_HIDDEN) {
+            if ((s == null || s.length() == 0) && id >= TEXT_TITLE && id <= TEXT_UPDATE_HINT) {
                 return FALLBACK_TEXTS[id - TEXT_TITLE];
             }
             return s;
@@ -991,7 +1163,7 @@ public final class CarPlaySettingsUi {
 
         public int getTextStatus(int id) {
             int st = super.getTextStatus(id);
-            if (st == 0 && id >= TEXT_TITLE && id <= TEXT_RGI_VC_HIDDEN) {
+            if (st == 0 && id >= TEXT_TITLE && id <= TEXT_UPDATE_HINT) {
                 return 8;
             }
             return st;
@@ -1228,6 +1400,16 @@ public final class CarPlaySettingsUi {
             registerScreenView(screen, MODEL_RGI_VC, rgiVcItem);
             menu.addWithPosition(rgiVcItem, pos++);
             rgiVcMenuItem = rgiVcItem;
+
+            // Row 10: Update from SD card (Check SD card / Confirm update / Cancel;
+            // the last three combo values are status-only: updating/done/failed).
+            MenuItemController updateItem = createComboItem(terminal, MODEL_UPDATE,
+                TEXT_UPDATE, new int[]{TEXT_UPDATE_CHECK, TEXT_UPDATE_CONFIRM, TEXT_UPDATE_CANCEL,
+                    TEXT_UPDATE_RUNNING, TEXT_UPDATE_DONE, TEXT_UPDATE_FAILED},
+                TEXT_UPDATE_HINT, INTERNAL_ID_UPDATE);
+            registerScreenView(screen, MODEL_UPDATE, updateItem);
+            menu.addWithPosition(updateItem, pos++);
+            updateMenuItem = updateItem;
 
             syncAudioRowsEnabledState();
             syncMenuEnabledStates();

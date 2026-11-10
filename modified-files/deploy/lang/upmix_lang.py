@@ -89,6 +89,14 @@ SURROUND_EXTRAS = {
 # 32: TEXT_RGI_VC_AUTO          (2501532)
 # 33: TEXT_RGI_VC_HINT          (2501533)
 # 34: TEXT_RGI_VC_HIDDEN        (2501534)
+# 35: TEXT_UPDATE               (2501535)
+# 36: TEXT_UPDATE_CHECK         (2501536)
+# 37: TEXT_UPDATE_CONFIRM       (2501537)
+# 38: TEXT_UPDATE_CANCEL        (2501538)
+# 39: TEXT_UPDATE_RUNNING       (2501539)
+# 40: TEXT_UPDATE_DONE          (2501540)
+# 41: TEXT_UPDATE_FAILED        (2501541)
+# 42: TEXT_UPDATE_HINT          (2501542)
 CM_TEXTS = {
     "en": [
         "CarPlay settings",
@@ -126,6 +134,14 @@ CM_TEXTS = {
         "Auto-hide when far",
         "Hide the cockpit turn card while the next maneuver is far away and show it on approach",
         "Hidden",
+        "Update from SD card",
+        "Check SD card",
+        "Confirm update",
+        "Cancel",
+        "Updating...",
+        "Update complete, please reboot",
+        "Update failed",
+        "Check the card, then confirm to run the installer on the SD card",
     ],
     "de": [
         "CarPlay-Einstellungen",
