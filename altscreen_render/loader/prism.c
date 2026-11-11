@@ -2,7 +2,7 @@
 #include <limits.h>
 #define STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_STATIC
-#define STBI_ONLY_PNG
+/* JPEG support is required for splash.bin frames; the loader decodes both. */
 #define STBI_NO_STDIO
 #define STBI_NO_LINEAR
 #define STBI_NO_HDR

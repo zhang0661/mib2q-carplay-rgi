@@ -131,6 +131,7 @@ struct screen_egl_present {
     unsigned char *splash_blob;
     uint32_t *splash_off, *splash_len;
     int splash_count, splash_fps, splash_loaded, splash_last, splash_uploaded;
+    uint64_t splash_start_ns;
     /* A posted waiting picture must exist before the thread can race an IDR. */
     /* Stable process-lifetime word owned by sink_omx_qnx.  The control thread
      * updates it atomically; EGL remains exclusively on the loader thread. */
@@ -977,11 +978,15 @@ static int ep_splash_frame(screen_egl_present_t *p, uint64_t elapsed_ms) {
         -1.0f, -1.0f,  1.0f,  1.0f, -1.0f, 1.0f
     };
     int index, w = 0, h = 0;
+    uint64_t selapsed;
     unsigned char *rgba;
+    (void)elapsed_ms;
     if (!p) return 0;
     if (ep_splash_load(p) != 0) return 0;
     if (!p->splash_program && ep_make_splash_program(p) != 0) return 0;
-    index = (int)((elapsed_ms * (uint64_t)p->splash_fps) / 1000ULL);
+    if (!p->splash_start_ns) p->splash_start_ns = ep_monotonic_ns();
+    selapsed = (ep_monotonic_ns() - p->splash_start_ns) / 1000000ULL;
+    index = (int)((selapsed * (uint64_t)p->splash_fps) / 1000ULL);
     if (index >= p->splash_count) return 0;
     if (index != p->splash_last || !p->splash_uploaded) {
         rgba = prism_decode_png(p->splash_blob + p->splash_off[index],
@@ -991,6 +996,8 @@ static int ep_splash_frame(screen_egl_present_t *p, uint64_t elapsed_ms) {
         glBindTexture(GL_TEXTURE_2D, p->splash_tex);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
         prism_free_image(rgba);
         p->splash_last = index;
