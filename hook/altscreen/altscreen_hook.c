@@ -2865,11 +2865,15 @@ static void alt_kick_viewarea(uint32_t gen)
 #define ALT_CLUSTER_URL_RGI_OFF_CENTER "maps:/car/instrumentcluster?showETA=yes&maneuverLayout=topAligned&showSpeedLimit=no"
 #define ALT_CLUSTER_URL_RGI_OFF_RIGHT  "maps:/car/instrumentcluster?showETA=yes&maneuverLayout=rightAligned&showSpeedLimit=no"
 #define ALT_CLUSTER_URL_RGI_ON         "maps:/car/instrumentcluster/map?showETA=no&maneuverLayout=no&showSpeedLimit=no"
+/* "Hidden" scene: the instrument cluster map WITHOUT maneuverLayout - iOS draws
+ * just the map, no turn card and no guidance card.  Used for the Sport stage's
+ * RGI-off step so the card disappears instead of a maneuver card appearing. */
+#define ALT_CLUSTER_URL_HIDDEN         "maps:/car/instrumentcluster?showETA=no&showSpeedLimit=no"
 
 static const char *alt_cluster_url_for_mode(int mode)
 {
     if (hide_cards_get())
-        return ALT_CLUSTER_URL_RGI_ON;   /* map only: no iOS turn cards */
+        return alt_rgi_active_get() ? ALT_CLUSTER_URL_RGI_ON : ALT_CLUSTER_URL_HIDDEN;
     if (alt_rgi_active_get() && alt_url_mode_get() == ALT_URL_MODE_MAP_WHEN_RGI) {
         return ALT_CLUSTER_URL_RGI_ON;
     }

@@ -593,6 +593,22 @@ public final class CarPlaySettingsUi {
     }
 
     public static void cycleCardState() {
+        /* Sport stage: only two steps - show the RGI card, hide it, show it...
+         * The Sport card is the stock guidance overlay, so hiding it means
+         * switching the RGI presentation off (renderer card_mode alone does not
+         * affect the stock overlay and looked like "no reaction"). */
+        if (!currentStagePopup) {
+            if (currentRgiEnabled == RGI_ENABLED_ON && currentRgiVc != RGI_VC_HIDDEN) {
+                selectRgiEnabled(RGI_ENABLED_OFF);
+                Log.w(TAG, "sport cycle -> RGI card hidden");
+            } else {
+                selectRgiEnabled(RGI_ENABLED_ON);
+                selectRgiVc(RGI_VC_ALWAYS);
+                selectAltUrl(ALT_URL_MAP_WHEN_RGI);
+                Log.w(TAG, "sport cycle -> RGI card shown");
+            }
+            return;
+        }
         int pos = (cyclePos < 0) ? readCyclePos() : cyclePos;
         pos = (pos + 1) % 4;
         cyclePos = pos;
