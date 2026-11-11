@@ -1071,7 +1071,7 @@ static int ep_loader_frame(screen_egl_present_t *p, uint64_t elapsed_ms) {
     if (!p->loader_first_logged) {
         p->loader_first_logged = 1;
         fprintf(stderr,
-                "altscreen_render[loader]: PRISM waiting window 99 visible %dx%d @30fps\n",
+                "altscreen_render[loader]: waiting window 99 visible %dx%d @30fps (splash/black)\n",
                 p->width, p->height);
     }
     ok = 0;
@@ -1169,6 +1169,12 @@ int screen_egl_present_start_loader(screen_egl_present_t *p) {
     p->loader_frames = 0;
     p->loader_failures = 0;
     p->loader_first_logged = 0;
+    /* Restart the splash animation clock on every connect/reconnect: without
+     * this reset the frame index stays at the end after the first playback and
+     * later reconnects show only the frozen last frame (or nothing). */
+    p->splash_start_ns = 0;
+    p->splash_last = -1;
+    p->splash_uploaded = 0;
     ep_arm_loader_hold(p);
     pthread_mutex_unlock(&p->gl_lock);
     /* Post one fully visible waiting frame synchronously. The next phone IDR
