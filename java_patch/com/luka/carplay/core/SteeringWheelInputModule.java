@@ -231,17 +231,26 @@ public final class SteeringWheelInputModule implements Module {
     }
 
     private static void copyJavaLogToSd(File dir) {
-        try {
-            File src = new File("/tmp/carplay_java.log");
-            if (!src.isFile()) return;
-            FileInputStream in = new FileInputStream(src);
-            FileOutputStream out = new FileOutputStream(new File(dir, "carplay_java.log"));
-            byte[] buf = new byte[4096];
-            int n;
-            while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
-            in.close();
-            out.close();
-        } catch (Throwable t) { /* best effort */ }
+        /* Copy every diagnostic the renderers/hook write to /tmp, so one roller
+         * press gives the full picture (splash load, cluster layers, update
+         * progress) without telnet or the M.I.B. export script. */
+        String[] names = {
+            "carplay_java.log", "altscreen_render.log", "maneuver_render.log",
+            "carplay_wrapper.log", "carplay_update.log", "carplay_settings"
+        };
+        for (int i = 0; i < names.length; i++) {
+            try {
+                File src = new File("/tmp/" + names[i]);
+                if (!src.isFile()) continue;
+                FileInputStream in = new FileInputStream(src);
+                FileOutputStream out = new FileOutputStream(new File(dir, names[i]));
+                byte[] buf = new byte[4096];
+                int n;
+                while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+                in.close();
+                out.close();
+            } catch (Throwable t) { /* best effort */ }
+        }
     }
 
     private boolean isConfirmedMapTab() {

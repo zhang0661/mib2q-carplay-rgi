@@ -131,6 +131,7 @@ struct screen_egl_present {
     unsigned char *splash_blob;
     uint32_t *splash_off, *splash_len;
     int splash_count, splash_fps, splash_loaded, splash_last, splash_uploaded;
+    int splash_w, splash_h;
     uint64_t splash_start_ns;
     /* A posted waiting picture must exist before the thread can race an IDR. */
     /* Stable process-lifetime word owned by sink_omx_qnx.  The control thread
@@ -888,7 +889,13 @@ static int ep_splash_enabled(void) {
         if (!strncmp(line, "splash=", 7)) on = atoi(line + 7) ? 1 : 0;
     }
     fclose(f);
+    if (!on) fprintf(stderr, "altscreen_render[loader]: splash disabled by settings (splash=0)\n");
     return on;
+}
+
+static uint32_t splash_le32(const unsigned char *b) {
+    return (uint32_t)b[0] | ((uint32_t)b[1] << 8)
+        | ((uint32_t)b[2] << 16) | ((uint32_t)b[3] << 24);
 }
 
 static int ep_splash_load(screen_egl_present_t *p) {
@@ -901,7 +908,11 @@ static int ep_splash_load(screen_egl_present_t *p) {
     if (!ep_splash_enabled()) return -1;
     f = fopen(EP_SPLASH_PATH, "rb");
     if (!f) f = fopen(EP_SPLASH_PATH_LOCAL, "rb");
-    if (!f) return -1;
+    if (!f) {
+        fprintf(stderr, "altscreen_render[loader]: splash.bin NOT FOUND (%s or %s)\n",
+                EP_SPLASH_PATH, EP_SPLASH_PATH_LOCAL);
+        return -1;
+    }
     fseek(f, 0, SEEK_END);
     size = ftell(f);
     fseek(f, 0, SEEK_SET);
@@ -910,19 +921,27 @@ static int ep_splash_load(screen_egl_present_t *p) {
     if (!buf) { fclose(f); return -1; }
     if (fread(buf, 1, (size_t)size, f) != (size_t)size) { free(buf); fclose(f); return -1; }
     fclose(f);
-    if (memcmp(buf, "SPL1", 4) != 0) { free(buf); return -1; }
-    count = (uint32_t)buf[4] | ((uint32_t)buf[5] << 8);
-    p->splash_fps = (int)((uint32_t)buf[6] | ((uint32_t)buf[7] << 8));
-    if (!count || p->splash_fps <= 0) { free(buf); return -1; }
+    if (memcmp(buf, "ALTLOGO1", 8) != 0) {
+        fprintf(stderr, "altscreen_render[loader]: splash.bin bad magic %.8s\n", buf);
+        free(buf); return -1;
+    }
+    p->splash_w = (int)splash_le32(buf + 8);
+    p->splash_h = (int)splash_le32(buf + 12);
+    p->splash_fps = (int)splash_le32(buf + 16);
+    count = splash_le32(buf + 20);
+    if (!p->splash_w || !p->splash_h || p->splash_fps <= 0 || !count) {
+        fprintf(stderr, "altscreen_render[loader]: splash.bin bad header %dx%d count=%u fps=%d\n",
+                p->splash_w, p->splash_h, count, p->splash_fps);
+        free(buf); return -1;
+    }
     p->splash_off = (uint32_t *)malloc(sizeof(uint32_t) * count);
     p->splash_len = (uint32_t *)malloc(sizeof(uint32_t) * count);
     if (!p->splash_off || !p->splash_len) { free(buf); return -1; }
-    pos = 8;
+    pos = 24;
     for (i = 0; i < count; i++) {
         uint32_t len;
         if (pos + 4 > (uint32_t)size) { free(buf); return -1; }
-        len = (uint32_t)buf[pos] | ((uint32_t)buf[pos + 1] << 8)
-            | ((uint32_t)buf[pos + 2] << 16) | ((uint32_t)buf[pos + 3] << 24);
+        len = splash_le32(buf + pos);
         pos += 4;
         if (!len || pos + len > (uint32_t)size) { free(buf); return -1; }
         p->splash_off[i] = pos;
@@ -931,8 +950,8 @@ static int ep_splash_load(screen_egl_present_t *p) {
     }
     p->splash_count = (int)count;
     p->splash_blob = buf;
-    fprintf(stderr, "altscreen_render[loader]: splash.bin %d frames @%d fps\n",
-            p->splash_count, p->splash_fps);
+    fprintf(stderr, "altscreen_render[loader]: splash.bin ALTLOGO1 %dx%d %d frames @%d fps\n",
+            p->splash_w, p->splash_h, p->splash_count, p->splash_fps);
     return 0;
 }
 
@@ -966,6 +985,7 @@ static int ep_make_splash_program(screen_egl_present_t *p) {
     glGenTextures(1, &p->splash_tex);
     return p->splash_tex ? 0 : -1;
 fail:
+    fprintf(stderr, "altscreen_render[loader]: splash program compile/link FAILED\n");
     if (p->splash_program) { glDeleteProgram(p->splash_program); p->splash_program = 0; }
     return -1;
 }
@@ -977,7 +997,7 @@ static int ep_splash_frame(screen_egl_present_t *p, uint64_t elapsed_ms) {
         -1.0f, -1.0f,  1.0f, -1.0f,  1.0f, 1.0f,
         -1.0f, -1.0f,  1.0f,  1.0f, -1.0f, 1.0f
     };
-    int index, w = 0, h = 0;
+    int index, outlen = 0;
     uint64_t selapsed;
     unsigned char *rgba;
     (void)elapsed_ms;
@@ -987,18 +1007,23 @@ static int ep_splash_frame(screen_egl_present_t *p, uint64_t elapsed_ms) {
     if (!p->splash_start_ns) p->splash_start_ns = ep_monotonic_ns();
     selapsed = (ep_monotonic_ns() - p->splash_start_ns) / 1000000ULL;
     index = (int)((selapsed * (uint64_t)p->splash_fps) / 1000ULL);
-    if (index >= p->splash_count) return 0;
+    if (index >= p->splash_count) index = p->splash_count - 1;   /* freeze */
     if (index != p->splash_last || !p->splash_uploaded) {
-        rgba = prism_decode_png(p->splash_blob + p->splash_off[index],
-                               p->splash_len[index], &w, &h);
-        if (!rgba) return 0;
+        rgba = prism_zlib_inflate(p->splash_blob + p->splash_off[index],
+                                  p->splash_len[index], &outlen);
+        if (!rgba || outlen != p->splash_w * p->splash_h * 4) {
+            if (rgba) prism_free_image(rgba);
+            fprintf(stderr, "altscreen_render[loader]: splash frame %d inflate failed (out=%d expect=%d)\n",
+                    index, outlen, p->splash_w * p->splash_h * 4);
+            return 0;
+        }
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, p->splash_tex);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, p->splash_w, p->splash_h, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
         prism_free_image(rgba);
         p->splash_last = index;
         p->splash_uploaded = 1;
@@ -1019,14 +1044,7 @@ static int ep_splash_frame(screen_egl_present_t *p, uint64_t elapsed_ms) {
 static int ep_loader_frame(screen_egl_present_t *p, uint64_t elapsed_ms) {
     GLenum gl_error = GL_NO_ERROR;
     int ok = -1;
-    int viewMode, layoutStyle;
-    prism_layout_t layout;
-    if (!p || !p->logo_texture || !p->sig_texture) return -1;
-    viewMode = (p->loader_view_area_mode && *p->loader_view_area_mode == 1) ? 1 : 0;
-    layoutStyle = (p->loader_layout_style &&
-                   *p->loader_layout_style == LOADER_STYLE_CLASSIC)
-        ? LOADER_STYLE_CLASSIC : LOADER_STYLE_SPORT;
-    layout = prism_layout(viewMode, layoutStyle, PRISM_SIGNATURE_W, PRISM_SIGNATURE_H);
+    if (!p) return -1;
 
     pthread_mutex_lock(&p->gl_lock);
     if (p->loader_stop) {
@@ -1037,12 +1055,14 @@ static int ep_loader_frame(screen_egl_present_t *p, uint64_t elapsed_ms) {
                         p->egl_context)) goto out;
 
     {
-        const float raster[4]={0,0,PRISM_WIDTH,PRISM_HEIGHT};
-        if (!ep_splash_frame(p, elapsed_ms))
-            ep_draw_waiting(p,&layout,elapsed_ms,p->width,p->height,raster);
+        /* PRISM removed: only the custom splash.bin animation plays.  When it
+         * is disabled or unavailable, clear to black and wait for video. */
+        if (!ep_splash_frame(p, elapsed_ms)) {
+            glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+            glClear(GL_COLOR_BUFFER_BIT);
+        }
     }
     p->loader_elapsed_ms=elapsed_ms;
-    p->transition_layout=layout;
     gl_error = glGetError();
     if (gl_error != GL_NO_ERROR ||
         !eglSwapBuffers(p->egl_display, p->egl_surface)) goto out;
@@ -1139,7 +1159,7 @@ int screen_egl_present_start_loader(screen_egl_present_t *p) {
         pthread_mutex_unlock(&p->gl_lock);
         return 0;
     }
-    p->transition_pending=1;
+    p->transition_pending=0;   /* PRISM Apple flight removed: hard cut to video */
     p->transition_active=0;
     p->transition_started_ns=0;
     p->transition_work_ns=p->transition_max_ns=0;
