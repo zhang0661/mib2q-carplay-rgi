@@ -884,6 +884,12 @@ static int alt_user_enable_get(void) { return __atomic_load_n(&g_alt_user_enable
 static void alt_user_enable_set(int v) { __atomic_store_n(&g_alt_user_enable, v ? 1 : 0, __ATOMIC_RELEASE); }
 static int alt_url_mode_get(void) { return __atomic_load_n(&g_alt_url_mode, __ATOMIC_ACQUIRE); }
 static void alt_url_mode_set(int v) { __atomic_store_n(&g_alt_url_mode, v ? 1 : 0, __ATOMIC_RELEASE); }
+/* Sport-stage map-card hiding (Java ALT_CFG byte 4): the cluster URL becomes the
+ * map-only one so the iOS turn cards never appear; the stock RGI overlay keeps
+ * its own logic. */
+static volatile int g_hide_cards;
+static int hide_cards_get(void) { return __atomic_load_n(&g_hide_cards, __ATOMIC_ACQUIRE); }
+static void hide_cards_set(int v) { __atomic_store_n(&g_hide_cards, v ? 1 : 0, __ATOMIC_RELEASE); }
 static int alt_layout_get(void) { return __atomic_load_n(&g_alt_layout, __ATOMIC_ACQUIRE); }
 static void alt_layout_set(int v)
 {
@@ -2862,6 +2868,8 @@ static void alt_kick_viewarea(uint32_t gen)
 
 static const char *alt_cluster_url_for_mode(int mode)
 {
+    if (hide_cards_get())
+        return ALT_CLUSTER_URL_RGI_ON;   /* map only: no iOS turn cards */
     if (alt_rgi_active_get() && alt_url_mode_get() == ALT_URL_MODE_MAP_WHEN_RGI) {
         return ALT_CLUSTER_URL_RGI_ON;
     }
@@ -2932,24 +2940,28 @@ static void rgi_on_cmd(uint16_t type, uint8_t flags, const uint8_t *payload, uin
 
 static void cfg_on_cmd(uint16_t type, uint8_t flags, const uint8_t *payload, uint32_t len, void *ctx)
 {
-    int en, url_mode, layout;
+    int en, url_mode, layout, hide_cards = 0;
     int url_changed;
     (void)type; (void)flags; (void)ctx;
     if (!payload || len < 3) return;
     en = payload[0] ? 1 : 0;
     url_mode = payload[1] ? 1 : 0;
     layout = (payload[2] <= 2) ? (int)payload[2] : ALT_LAYOUT_RIGHT;
-    url_changed = (url_mode != alt_url_mode_get()) || (layout != alt_layout_get());
+    if (len >= 4) hide_cards = payload[3] ? 1 : 0;
+    url_changed = (url_mode != alt_url_mode_get()) || (layout != alt_layout_get())
+               || (hide_cards != hide_cards_get());
     alt_user_enable_set(en);
     alt_url_mode_set(url_mode);
     alt_layout_set(layout);
+    hide_cards_set(hide_cards);
     if (url_changed && en) {
         int rc = alt_show_ui_for_mode(0, alt_zone_mode_get(), "cfg-change");
         (void)rc;
-        LOG_WARN(LOG_MODULE, "alt: cfg enable=%d url_mode=%d layout=%d -> cluster url %s rc=%d%s",
-                 en, url_mode, layout, alt_cluster_url(), rc, ap_status(rc));
+        LOG_WARN(LOG_MODULE, "alt: cfg enable=%d url_mode=%d layout=%d hide_cards=%d -> cluster url %s rc=%d%s",
+                 en, url_mode, layout, hide_cards, alt_cluster_url(), rc, ap_status(rc));
     } else {
-        LOG_INFO(LOG_MODULE, "alt: cfg enable=%d url_mode=%d layout=%d", en, url_mode, layout);
+        LOG_INFO(LOG_MODULE, "alt: cfg enable=%d url_mode=%d layout=%d hide_cards=%d",
+                 en, url_mode, layout, hide_cards);
     }
 }
 
@@ -3035,6 +3047,7 @@ static void alt_forward_failed(uint32_t gen, void *context)
 static void update_on_cmd(uint16_t type, uint8_t flags, const uint8_t *payload, uint32_t len, void *ctx)
 {
     static const char *sd_candidates[] = {
+        "/net/mmx/fs/sda0/mod/custom.sh",
         "/mnt/sdcard10t12/mod/custom.sh",
         "/mnt/sdcard/mod/custom.sh",
         "/fs/sdcard0/mod/custom.sh",

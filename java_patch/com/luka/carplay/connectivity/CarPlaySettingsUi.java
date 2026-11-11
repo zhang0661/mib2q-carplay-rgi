@@ -219,6 +219,10 @@ public final class CarPlaySettingsUi {
     public static final int TEXT_SPLASH_ON             = 2501544;
     public static final int TEXT_SPLASH_OFF            = 2501545;
     public static final int TEXT_SPLASH_HINT           = 2501546;
+    public static final int TEXT_UPDATE_CHECKING       = 2501547;
+    public static final int TEXT_UPDATE_FOUND          = 2501548;
+    public static final int TEXT_UPDATE_NOTFOUND       = 2501549;
+    public static final int TEXT_UPDATE_EXECUTING      = 2501550;
 
     private static final String[] FALLBACK_TEXTS = new String[]{
         "CarPlay settings",
@@ -267,7 +271,11 @@ public final class CarPlaySettingsUi {
         "Connect animation",
         "On",
         "Off",
-        "Play the animation on the cluster while CarPlay connects"
+        "Play the animation on the cluster while CarPlay connects",
+        "Checking SD card...",
+        "Update package found",
+        "No update package found",
+        "Running the update..."
     };
 
     private static final int[] SUBMENU_BITMAPS = new int[]{39, 39, 39, 39};
@@ -369,12 +377,14 @@ public final class CarPlaySettingsUi {
         return currentRgiFar == RGI_FAR_STRAIGHT;
     }
 
-    /** Send active AltScreen enable, URL policy, and card placement to the C hook. */
+    /** Send active AltScreen enable, URL policy, card placement and the Sport
+     *  stage card-hiding flag to the C hook. */
     public static boolean sendAltConfigToHook() {
         byte[] payload = new byte[]{
             (byte) currentAltScreen,
             (byte) currentAltUrl,
-            (byte) currentAltLayout
+            (byte) currentAltLayout,
+            (byte) (cardsHiddenStage ? 1 : 0)
         };
         return CarplayBus.getInstance().sendBinary(CarplayBus.CMD_ALT_CFG, payload);
     }
@@ -619,21 +629,27 @@ public final class CarPlaySettingsUi {
     }
 
     /** Cluster stage flip (from ClusterLayerController.applyNow).  Measured
-     *  mapping: popup=true = full-map stage, popup=false = Sport stage.  Sport
-     *  writes 0 (the renderer skips the plate entirely = factory look); full map
-     *  writes the user's 30/50/100. */
+     *  mapping: popup=true = full-map stage, popup=false = Sport stage.
+     *  Sport: hide ONLY the iOS map cards (hook flag); the RGI guidance card
+     *  keeps its own logic untouched.  Full map: unhide, layout untouched. */
     public static void onClusterStageChanged(boolean popup) {
         if (currentStagePopup == popup) return;
         currentStagePopup = popup;
+        stageSeen = true;
+        cardsHiddenStage = !popup;
         writeSettingsFile();
+        sendAltConfigToHook();
         Log.w(TAG, "cluster stage -> popup=" + popup
-            + " effective card_alpha=" + getEffectiveCardAlpha());
+            + " hide_cards=" + cardsHiddenStage);
     }
 
     /** Effective plate opacity written to the settings file (0 = no plate). */
     public static int getEffectiveCardAlpha() {
         return currentStagePopup ? currentCardAlpha : 0;
     }
+
+    private static volatile boolean stageSeen;
+    private static volatile boolean cardsHiddenStage;
 
     /** The user picked a combo-box index (0=Always, 1=Auto-hide, 2=Hidden). */
     public static void selectRgiVcChoice(int choice) {
@@ -668,7 +684,8 @@ public final class CarPlaySettingsUi {
     /* ---- "从 SD 卡更新" row: check / confirm / cancel + status values ------- */
 
     private static final String[] UPDATE_SD_CANDIDATES =
-        { "/mnt/sdcard10t12", "/mnt/sdcard", "/fs/sdcard0" };
+        { "/net/mmx/fs/sda0", "/mnt/sdcard10t12", "/mnt/sdcard", "/fs/sdcard0",
+          "/fs/sdcard1", "/mnt/sdcard0", "/mnt/sdcard1" };
     private static Timer updateTimer;
 
     private static boolean sdHasUpdatePackage() {
@@ -728,11 +745,14 @@ public final class CarPlaySettingsUi {
         ChoiceModel m = updateModel;
         switch (idx) {
             case 0:  /* 检查 SD 卡 */
+                showUpdateResult(TEXT_UPDATE_CHECKING);
                 if (sdHasUpdatePackage()) {
                     if (m != null) try { m.setValue(1); } catch (Throwable t) { }
+                    showUpdateResult(TEXT_UPDATE_FOUND);
                     Log.w(TAG, "update: SD package found");
                 } else {
                     if (m != null) try { m.setValue(2); } catch (Throwable t) { }
+                    showUpdateResult(TEXT_UPDATE_NOTFOUND);
                     Log.w(TAG, "update: no SD package");
                 }
                 break;
@@ -740,6 +760,7 @@ public final class CarPlaySettingsUi {
                 boolean sent = CarplayBus.getInstance().sendBinary(
                     CarplayBus.CMD_UPDATE, new byte[]{1});
                 if (m != null) try { m.setValue(1); } catch (Throwable t) { }
+                showUpdateResult(TEXT_UPDATE_EXECUTING);
                 Log.w(TAG, "update: started" + (sent ? "" : " (bus down)"));
                 startUpdatePoll(m);
                 break;
@@ -1242,7 +1263,7 @@ public final class CarPlaySettingsUi {
 
         public String getText(int id) {
             String s = super.getText(id);
-            if ((s == null || s.length() == 0) && id >= TEXT_TITLE && id <= TEXT_SPLASH_HINT) {
+            if ((s == null || s.length() == 0) && id >= TEXT_TITLE && id <= TEXT_UPDATE_EXECUTING) {
                 return FALLBACK_TEXTS[id - TEXT_TITLE];
             }
             return s;
@@ -1250,7 +1271,7 @@ public final class CarPlaySettingsUi {
 
         public int getTextStatus(int id) {
             int st = super.getTextStatus(id);
-            if (st == 0 && id >= TEXT_TITLE && id <= TEXT_SPLASH_HINT) {
+            if (st == 0 && id >= TEXT_TITLE && id <= TEXT_UPDATE_EXECUTING) {
                 return 8;
             }
             return st;

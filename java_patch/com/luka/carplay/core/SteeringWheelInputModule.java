@@ -210,7 +210,7 @@ public final class SteeringWheelInputModule implements Module {
      * card (logs_export/), so a key press is diagnostic without telnet and
      * without the export script.  Best effort: every failure is silent. */
     private static final String[] SD_MOUNTS =
-        { "/mnt/sdcard10t12", "/mnt/sdcard", "/fs/sdcard0" };
+        { "/net/mmx/fs/sda0", "/mnt/sdcard10t12", "/mnt/sdcard", "/fs/sdcard0" };
 
     private static void writeSdKeyLog(String line) {
         for (int i = 0; i < SD_MOUNTS.length; i++) {
